@@ -1,0 +1,487 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Tenant & Organisation ───────────────────────────────────────────────────
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  companies Company[]
+  users     User[]
+  roles     Role[]
+}
+
+model Company {
+  id        String   @id @default(cuid())
+  tenantId  String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id])
+  brands     Brand[]
+  properties Property[]
+}
+
+model Brand {
+  id        String   @id @default(cuid())
+  companyId String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company    Company    @relation(fields: [companyId], references: [id])
+  properties Property[]
+}
+
+model Property {
+  id           String   @id @default(cuid())
+  tenantId     String
+  companyId    String
+  brandId      String?
+  name         String
+  code         String
+  timezone     String   @default("Asia/Kolkata")
+  currency     String   @default("INR")
+  businessDate String // YYYY-MM-DD
+  checkInTime  String   @default("14:00")
+  checkOutTime String   @default("11:00")
+  address      String?
+  city         String?
+  country      String   @default("IN")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company          Company           @relation(fields: [companyId], references: [id])
+  brand            Brand?            @relation(fields: [brandId], references: [id])
+  roomTypes        RoomType[]
+  physicalRooms    PhysicalRoom[]
+  roomProducts     RoomProduct[]
+  ratePlans        RatePlan[]
+  inventoryDays    InventoryDay[]
+  reservations     Reservation[]
+  guests           Guest[]
+  folios           Folio[]
+  hkTasks          HkTask[]
+  oooBlocks        OooOosBlock[]
+  auditEvents      AuditEvent[]
+  channelConns     ChannelConnection[]
+  propertyAccesses PropertyAccess[]
+
+  @@unique([tenantId, code])
+}
+
+// ─── Identity & Access ───────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  tenantId     String
+  email        String
+  passwordHash String
+  fullName     String
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant           Tenant           @relation(fields: [tenantId], references: [id])
+  userRoles        UserRole[]
+  propertyAccesses PropertyAccess[]
+  auditEvents      AuditEvent[]
+
+  @@unique([tenantId, email])
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  permissions String // JSON array of permission strings
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  userRoles UserRole[]
+
+  @@unique([tenantId, name])
+}
+
+model UserRole {
+  id     String @id @default(cuid())
+  userId String
+  roleId String
+
+  user User @relation(fields: [userId], references: [id])
+  role Role @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, roleId])
+}
+
+model PropertyAccess {
+  id         String @id @default(cuid())
+  userId     String
+  propertyId String
+
+  user     User     @relation(fields: [userId], references: [id])
+  property Property @relation(fields: [propertyId], references: [id])
+
+  @@unique([userId, propertyId])
+}
+
+// ─── Room Catalogue ──────────────────────────────────────────────────────────
+
+model RoomType {
+  id           String   @id @default(cuid())
+  propertyId   String
+  code         String
+  name         String
+  description  String?
+  maxOccupancy Int      @default(2)
+  baseOccupancy Int     @default(2)
+  physicalCount Int     @default(0)
+  amenities    String   @default("[]") // JSON
+  isActive     Boolean  @default(true)
+  recordVersion Int     @default(1)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  property      Property       @relation(fields: [propertyId], references: [id])
+  physicalRooms PhysicalRoom[]
+  roomProducts  RoomProduct[]
+  inventoryDays InventoryDay[]
+
+  @@unique([propertyId, code])
+}
+
+model PhysicalRoom {
+  id            String   @id @default(cuid())
+  propertyId    String
+  roomTypeId    String
+  number        String
+  floor         String?
+  status        String   @default("vacant_clean") // vacant_clean|reserved|occupied|vacant_dirty|cleaning|inspection|ooo|oos
+  attributes    String   @default("{}") // JSON
+  isActive      Boolean  @default(true)
+  recordVersion Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  property     Property          @relation(fields: [propertyId], references: [id])
+  roomType     RoomType          @relation(fields: [roomTypeId], references: [id])
+  assignments  RoomAssignment[]
+  hkTasks      HkTask[]
+  oooBlocks    OooOosBlock[]
+
+  @@unique([propertyId, number])
+}
+
+model RoomProduct {
+  id              String   @id @default(cuid())
+  propertyId      String
+  roomTypeId      String
+  code            String
+  name            String
+  description     String?
+  inclusions      String   @default("[]") // JSON
+  isActive        Boolean  @default(true)
+  recordVersion   Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  property         Property          @relation(fields: [propertyId], references: [id])
+  roomType         RoomType          @relation(fields: [roomTypeId], references: [id])
+  ratePlans        RatePlan[]
+  reservationRooms ReservationRoom[]
+
+  @@unique([propertyId, code])
+}
+
+model RatePlan {
+  id            String   @id @default(cuid())
+  propertyId    String
+  roomProductId String
+  code          String
+  name          String
+  baseRate      Float
+  currency      String   @default("INR")
+  mealPlan      String? // EP|CP|MAP|AP
+  cancellation  String   @default("flexible")
+  isActive      Boolean  @default(true)
+  effectiveFrom String? // YYYY-MM-DD
+  effectiveTo   String?
+  recordVersion Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  property         Property          @relation(fields: [propertyId], references: [id])
+  roomProduct      RoomProduct       @relation(fields: [roomProductId], references: [id])
+  reservationRooms ReservationRoom[]
+
+  @@unique([propertyId, code])
+}
+
+// ─── Inventory ───────────────────────────────────────────────────────────────
+
+model InventoryDay {
+  id                   String   @id @default(cuid())
+  propertyId           String
+  roomTypeId           String
+  stayDate             String // YYYY-MM-DD
+  baseCapacity         Int
+  confirmedRoomNights  Int      @default(0)
+  activeGroupBlocks    Int      @default(0)
+  activeHolds          Int      @default(0)
+  outOfOrderOrService  Int      @default(0)
+  authorisedOverbooking Int     @default(0)
+  recordVersion        Int      @default(1)
+  updatedAt            DateTime @updatedAt
+
+  property Property @relation(fields: [propertyId], references: [id])
+  roomType RoomType @relation(fields: [roomTypeId], references: [id])
+
+  @@unique([propertyId, roomTypeId, stayDate])
+}
+
+model OooOosBlock {
+  id         String   @id @default(cuid())
+  propertyId String
+  roomId     String
+  kind       String // ooo|oos
+  reason     String
+  startDate  String
+  endDate    String
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  property Property     @relation(fields: [propertyId], references: [id])
+  room     PhysicalRoom @relation(fields: [roomId], references: [id])
+}
+
+// ─── Guests ──────────────────────────────────────────────────────────────────
+
+model Guest {
+  id          String   @id @default(cuid())
+  propertyId  String
+  tenantId    String
+  fullName    String
+  email       String?
+  mobile      String?
+  nationality String?
+  idType      String?
+  idNumber    String?
+  preferences String   @default("{}")
+  isVip       Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  property     Property      @relation(fields: [propertyId], references: [id])
+  reservations Reservation[]
+  stayGuests   StayGuest[]
+}
+
+// ─── Reservations ────────────────────────────────────────────────────────────
+
+model Reservation {
+  id                String   @id @default(cuid())
+  propertyId        String
+  confirmationNo    String
+  status            String   @default("draft") // draft|hold|tentative|confirmed|checked_in|checked_out|cancelled|no_show|waitlisted
+  source            String   @default("direct") // direct|walk_in|ota|corporate|agent|group
+  externalRef       String?
+  arrivalDate       String
+  departureDate     String
+  adults            Int      @default(1)
+  children          Int      @default(0)
+  guestId           String?
+  notes             String?
+  totalAmount       Float    @default(0)
+  recordVersion     Int      @default(1)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  property         Property          @relation(fields: [propertyId], references: [id])
+  guest            Guest?            @relation(fields: [guestId], references: [id])
+  rooms            ReservationRoom[]
+  stays            Stay[]
+  folios           Folio[]
+  revisions        ReservationRevision[]
+
+  @@unique([propertyId, confirmationNo])
+  @@index([propertyId, arrivalDate])
+  @@index([propertyId, status])
+}
+
+model ReservationRevision {
+  id            String   @id @default(cuid())
+  reservationId String
+  revisionNo    Int
+  payload       String // JSON snapshot
+  reason        String?
+  createdBy     String?
+  createdAt     DateTime @default(now())
+
+  reservation Reservation @relation(fields: [reservationId], references: [id])
+}
+
+model ReservationRoom {
+  id            String  @id @default(cuid())
+  reservationId String
+  roomProductId String
+  ratePlanId    String
+  quantity      Int     @default(1)
+  nightlyRate   Float
+  assignedRoomId String?
+
+  reservation Reservation @relation(fields: [reservationId], references: [id])
+  roomProduct RoomProduct @relation(fields: [roomProductId], references: [id])
+  ratePlan    RatePlan    @relation(fields: [ratePlanId], references: [id])
+}
+
+model Stay {
+  id            String   @id @default(cuid())
+  reservationId String
+  status        String   @default("expected") // expected|in_house|checked_out
+  checkedInAt   DateTime?
+  checkedOutAt  DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  reservation Reservation      @relation(fields: [reservationId], references: [id])
+  guests      StayGuest[]
+  assignments RoomAssignment[]
+}
+
+model StayGuest {
+  id      String  @id @default(cuid())
+  stayId  String
+  guestId String
+  isPrimary Boolean @default(true)
+
+  stay  Stay  @relation(fields: [stayId], references: [id])
+  guest Guest @relation(fields: [guestId], references: [id])
+}
+
+model RoomAssignment {
+  id        String   @id @default(cuid())
+  stayId    String
+  roomId    String
+  fromDate  String
+  toDate    String
+  isCurrent Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  stay Stay         @relation(fields: [stayId], references: [id])
+  room PhysicalRoom @relation(fields: [roomId], references: [id])
+}
+
+// ─── Folio & Payments ────────────────────────────────────────────────────────
+
+model Folio {
+  id            String   @id @default(cuid())
+  propertyId    String
+  reservationId String
+  status        String   @default("open") // open|partially_settled|settled|closed
+  balance       Float    @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  property    Property    @relation(fields: [propertyId], references: [id])
+  reservation Reservation @relation(fields: [reservationId], references: [id])
+  postings    Posting[]
+  payments    Payment[]
+}
+
+model Posting {
+  id          String   @id @default(cuid())
+  folioId     String
+  chargeCode  String
+  description String
+  amount      Float
+  taxAmount   Float    @default(0)
+  businessDate String
+  isReversed  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  folio Folio @relation(fields: [folioId], references: [id])
+}
+
+model Payment {
+  id          String   @id @default(cuid())
+  folioId     String
+  method      String // cash|card|upi|bank|city_ledger
+  amount      Float
+  status      String   @default("captured") // initiated|authorised|captured|failed|refunded|voided
+  reference   String?
+  createdAt   DateTime @default(now())
+
+  folio Folio @relation(fields: [folioId], references: [id])
+}
+
+// ─── Housekeeping ────────────────────────────────────────────────────────────
+
+model HkTask {
+  id          String   @id @default(cuid())
+  propertyId  String
+  roomId      String
+  status      String   @default("unassigned") // unassigned|assigned|accepted|in_progress|completed|inspection_pending|passed|failed|rework
+  priority    String   @default("normal") // low|normal|high|vip|arrival
+  taskType    String   @default("checkout_clean")
+  assigneeId  String?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  property Property     @relation(fields: [propertyId], references: [id])
+  room     PhysicalRoom @relation(fields: [roomId], references: [id])
+}
+
+// ─── Distribution ────────────────────────────────────────────────────────────
+
+model ChannelConnection {
+  id           String   @id @default(cuid())
+  propertyId   String
+  provider     String   @default("channex")
+  status       String   @default("not_configured") // not_configured|awaiting_authorisation|mapping|sync_testing|active|degraded|suspended
+  externalId   String?
+  lastAriAt    DateTime?
+  lastBookingAt DateTime?
+  errorCount   Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  property Property @relation(fields: [propertyId], references: [id])
+}
+
+// ─── Audit ───────────────────────────────────────────────────────────────────
+
+model AuditEvent {
+  id         String   @id @default(cuid())
+  tenantId   String
+  propertyId String?
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  beforeJson String?
+  afterJson  String?
+  reason     String?
+  correlationId String?
+  createdAt  DateTime @default(now())
+
+  property Property? @relation(fields: [propertyId], references: [id])
+  actor    User?     @relation(fields: [actorId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@index([entityType, entityId])
+}
