@@ -1,0 +1,36 @@
+{
+  "name": "hotel-os",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hotel OS — Property Management System (PMS)",
+  "packageManager": "pnpm@10.33.3",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @hotel-os/api --filter @hotel-os/web dev",
+    "dev:api": "pnpm --filter @hotel-os/api dev",
+    "dev:web": "pnpm --filter @hotel-os/web dev",
+    "build": "pnpm --filter @hotel-os/shared build && pnpm --filter @hotel-os/api build && pnpm --filter @hotel-os/web build",
+    "db:generate": "pnpm --filter @hotel-os/api db:generate",
+    "db:migrate": "pnpm --filter @hotel-os/api db:migrate",
+    "db:seed": "pnpm --filter @hotel-os/api db:seed",
+    "db:reset": "pnpm --filter @hotel-os/api db:reset",
+    "lint": "pnpm -r lint",
+    "test": "pnpm --filter @hotel-os/api test"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.6",
+    "turbo": "^2.10.9",
+    "typescript": "^5.9.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "prisma",
+      "@prisma/engines",
+      "@prisma/client",
+      "bcrypt",
+      "@nestjs/core",
+      "unrs-resolver",
+      "@scarf/scarf",
+      "esbuild"
+    ]
+  }
+}
