@@ -12,7 +12,15 @@ type Booking = {
   occasion: string
 }
 
-const today = new Date().toISOString().slice(0, 10)
+function toDateInputValue(date: Date) {
+  return date.toISOString().slice(0, 10)
+}
+
+const todayDate = new Date()
+const today = toDateInputValue(todayDate)
+const defaultCheckOut = toDateInputValue(
+  new Date(todayDate.getTime() + 3 * 86_400_000),
+)
 
 function nightsBetween(checkIn: string, checkOut: string) {
   const start = new Date(checkIn)
@@ -28,7 +36,7 @@ function App() {
     name: '',
     email: '',
     checkIn: today,
-    checkOut: '',
+    checkOut: defaultCheckOut,
     rooms: 10,
     guests: 20,
     occasion: 'Team offsite',
