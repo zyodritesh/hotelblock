@@ -1,4 +1,11 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+/**
+ * Browser calls same-origin `/api/*`, which Next.js rewrites to the Nest API.
+ * This avoids localhost/CORS failures in cloud previews and remote browsers.
+ */
+const API_URL =
+  typeof window === 'undefined'
+    ? process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
+    : '/api';
 
 export type PropertySummary = {
   id: string;
@@ -32,19 +39,27 @@ type RequestOptions = {
   idempotencyKey?: string;
 };
 
+function errorMessage(payload: unknown, status: number): string {
+  if (typeof payload === 'string' && payload.trim()) return payload;
+  if (payload && typeof payload === 'object') {
+    const p = payload as { message?: unknown; error?: unknown };
+    if (typeof p.message === 'string') return p.message;
+    if (Array.isArray(p.message)) return p.message.join(', ');
+    if (typeof p.message === 'object' && p.message && 'message' in p.message) {
+      const nested = (p.message as { message?: unknown }).message;
+      if (typeof nested === 'string') return nested;
+    }
+    if (typeof p.error === 'string') return p.error;
+  }
+  return `Request failed (${status})`;
+}
+
 export class ApiError extends Error {
   status: number;
   payload: unknown;
 
   constructor(status: number, payload: unknown) {
-    super(
-      typeof payload === 'object' &&
-        payload &&
-        'message' in payload &&
-        typeof (payload as { message: unknown }).message === 'string'
-        ? ((payload as { message: string }).message)
-        : `Request failed (${status})`,
-    );
+    super(errorMessage(payload, status));
     this.status = status;
     this.payload = payload;
   }
