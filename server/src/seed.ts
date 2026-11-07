@@ -308,6 +308,87 @@ if (existingLogs.c < 200) {
   console.log(`✅ Agent activity logs: 200`);
 }
 
+// ── 9. PROPOSALS (120) ───────────────────────────────────────────────────────
+const existingProposals = db.prepare('SELECT COUNT(*) as c FROM proposals').get() as any;
+if (existingProposals.c < 100) {
+  const leadRows = db.prepare('SELECT id, title, segment FROM leads').all() as { id: string; title: string; segment: string }[];
+  const insertProposal = db.prepare(`INSERT INTO proposals
+    (id,lead_id,user_id,property_id,title,ref_number,status,client_name,client_company,client_phone,client_email,
+     event_date,event_type,venue,pax,validity_date,payment_terms,cancellation_policy,
+     tax_percent,discount,total_value,line_items,photos,notes,created_at,updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+
+  const EVENT_TYPES = ['Conference', 'Wedding', 'Corporate Offsite', 'Product Launch', 'Banquet Dinner', 'Board Meeting', 'Incentive Trip', 'Social Gathering'];
+  const VENUES = ['Grand Ballroom', 'Lawn & Pool Deck', 'Boardroom A', 'Banquet Hall 1', 'Rooftop Terrace', 'Crystal Hall', 'Multiple Venues'];
+  const STATUSES = ['Draft', 'Draft', 'Sent', 'Sent', 'Sent', 'Accepted', 'Accepted', 'Rejected'];
+  const PAYMENT = [
+    '50% advance on confirmation, balance 7 days before the event.',
+    '30% advance, 40% 15 days prior, balance on the event day.',
+    '100% advance for room blocks. Banquet billed on actual consumption.',
+    'Corporate credit — invoice within 15 days of checkout.',
+  ];
+  const CANCEL = [
+    'Free cancellation up to 21 days before the event. 50% charge within 21–7 days. 100% within 7 days.',
+    'Room block: release unsold rooms 14 days prior at no charge. Inside 14 days, one night retention.',
+    '25% retention if cancelled within 30 days. 75% within 15 days. No refund inside 7 days.',
+  ];
+  const ITEM_BANK: { section: string; description: string; rate: number }[] = [
+    { section: 'Accommodation', description: 'Deluxe Room — Single occupancy', rate: 8500 },
+    { section: 'Accommodation', description: 'Deluxe Room — Double occupancy', rate: 10500 },
+    { section: 'Accommodation', description: 'Suite upgrade', rate: 18000 },
+    { section: 'Food & Beverage', description: 'Welcome hi-tea', rate: 750 },
+    { section: 'Food & Beverage', description: 'Lunch buffet — veg & non-veg', rate: 1450 },
+    { section: 'Food & Beverage', description: 'Gala dinner with live counters', rate: 2200 },
+    { section: 'Food & Beverage', description: 'Coffee break (2 services)', rate: 450 },
+    { section: 'Event Services', description: 'Ballroom rental — full day', rate: 85000 },
+    { section: 'Event Services', description: 'Meeting room — half day', rate: 25000 },
+    { section: 'Event Services', description: 'Stage, podium and branding wall', rate: 35000 },
+    { section: 'AV & Decor', description: 'LED wall and sound system', rate: 45000 },
+    { section: 'AV & Decor', description: 'Floral decor package', rate: 60000 },
+    { section: 'AV & Decor', description: 'Uplighting and dance floor', rate: 28000 },
+    { section: 'Transfers & Logistics', description: 'Airport transfers — sedan', rate: 2200 },
+    { section: 'Transfers & Logistics', description: 'Coach transfer — 35 seater', rate: 8500 },
+    { section: 'Other', description: 'Service charge and coordination', rate: 15000 },
+  ];
+
+  const need = 120 - existingProposals.c;
+  const txn = db.transaction(() => {
+    for (let i = 0; i < need; i++) {
+      const n = existingProposals.c + i + 1;
+      const fn = pick(FIRST_NAMES), ln = pick(LAST_NAMES);
+      const company = pick(COMPANY_NAMES);
+      const lead = leadRows.length ? pick(leadRows) : null;
+      const items = Array.from({ length: rand(3, 6) }, () => {
+        const base = pick(ITEM_BANK);
+        return { section: base.section, description: base.description, qty: rand(1, 80), rate: base.rate };
+      });
+      const subtotal = items.reduce((s, it) => s + it.qty * it.rate, 0);
+      const discount = rand(0, 4) === 0 ? rand(5000, 25000) : 0;
+      const taxPercent = pick([5, 12, 18]);
+      const total = Math.round((subtotal - discount) * (1 + taxPercent / 100));
+      const created = daysAgo(rand(0, 120));
+      const eventDate = futureDays(rand(10, 180));
+      const valid = futureDays(rand(7, 45));
+      insertProposal.run(
+        uuidv4(), lead?.id || null, pick(USER_IDS), PROPERTY_ID,
+        lead?.title || pick(EVENT_TITLES),
+        `PROP-2026-${String(n).padStart(3, '0')}`,
+        pick(STATUSES),
+        `${fn} ${ln}`, company,
+        `+91-${rand(70000, 99999)}-${rand(10000, 99999)}`,
+        `${fn.toLowerCase()}.${ln.toLowerCase()}${rand(10, 99)}@gmail.com`,
+        eventDate, pick(EVENT_TYPES), pick(VENUES), rand(20, 400), valid,
+        pick(PAYMENT), pick(CANCEL),
+        taxPercent, discount, total, JSON.stringify(items), '[]',
+        `Proposal prepared for ${company}. ${pick(['Client requested a revised menu', 'Includes one complimentary suite for the host', 'AV requirements confirmed with operations', 'Rates valid for the quoted dates only', 'Group rate subject to rooming list 21 days prior'])}.`,
+        created, created
+      );
+    }
+  });
+  txn();
+  console.log(`✅ Proposals: ${need} added`);
+}
+
 // ── Summary ──────────────────────────────────────────────────────────────────
 const summary = {
   accounts: (db.prepare('SELECT COUNT(*) as c FROM accounts').get() as any).c,
@@ -317,6 +398,7 @@ const summary = {
   leads: (db.prepare('SELECT COUNT(*) as c FROM leads').get() as any).c,
   agents: (db.prepare('SELECT COUNT(*) as c FROM agents').get() as any).c,
   tasks: (db.prepare('SELECT COUNT(*) as c FROM tasks').get() as any).c,
+  proposals: (db.prepare('SELECT COUNT(*) as c FROM proposals').get() as any).c,
 };
 console.log('\n📊 Database totals:', summary);
 console.log('🎉 Seed complete!\n');
