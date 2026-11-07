@@ -4,7 +4,7 @@ import Pagination from '../components/Pagination';
 import {
   AGENT_TYPES, AGENT_SPECIALIZATIONS, AGENT_TIERS, AGENT_STATUSES,
   FOLLOW_UP_FREQUENCIES, ACTIVITY_TYPES, ACTIVITY_OUTCOMES,
-  TIER_CONFIG, DUE_STATUS_CONFIG, formatDate, formatDateTime, exportCSV
+  TIER_CONFIG, DUE_STATUS_CONFIG, formatDate, formatDateTime, exportCSV, todayISO, addDaysISO
 } from '../lib/utils';
 
 const API = '/api';
@@ -28,7 +28,7 @@ interface ActivityLog {
 const BLANK_AGENT = {
   name: '', agency_name: '', type: 'Travel Agent', country: '', city: '',
   phone: '', email: '', website: '', specialization: '', tier: 'B',
-  status: 'Active', assigned_to: '', notes: '', frequency: 'Monthly',
+  status: 'Active', assigned_to: '', notes: '', frequency: 'Monthly', next_due_date: '',
 };
 
 export default function Agents() {
@@ -52,7 +52,7 @@ export default function Agents() {
   const [detailAgent, setDetailAgent] = useState<Agent | null>(null);
   const [detailData, setDetailData] = useState<{ activity: ActivityLog[]; leads: any[] } | null>(null);
   const [showLogModal, setShowLogModal] = useState(false);
-  const [logForm, setLogForm] = useState({ type: 'Call', outcome: '', notes: '', contacted_at: new Date().toISOString().slice(0, 16) });
+  const [logForm, setLogForm] = useState({ type: 'Call', outcome: '', notes: '', contacted_at: todayISO(), next_due_date: addDaysISO(todayISO(), 30) });
   const [logSaving, setLogSaving] = useState(false);
   const [sortField, setSortField] = useState<'name' | 'tier' | 'next_due_date' | 'last_contact_date'>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -92,7 +92,7 @@ export default function Agents() {
 
   const openCreate = () => { setForm({ ...BLANK_AGENT }); setEditAgent(null); setShowForm(true); };
   const openEdit = (a: Agent) => {
-    setForm({ name: a.name, agency_name: a.agency_name, type: a.type, country: a.country, city: a.city, phone: a.phone, email: a.email, website: a.website, specialization: a.specialization, tier: a.tier, status: a.status, assigned_to: a.assigned_to || '', notes: a.notes, frequency: a.frequency || 'Monthly' });
+    setForm({ name: a.name, agency_name: a.agency_name, type: a.type, country: a.country, city: a.city, phone: a.phone, email: a.email, website: a.website, specialization: a.specialization, tier: a.tier, status: a.status, assigned_to: a.assigned_to || '', notes: a.notes, frequency: a.frequency || 'Monthly', next_due_date: (a.next_due_date || '').slice(0, 10) });
     setEditAgent(a);
     setShowForm(true);
   };
@@ -118,6 +118,13 @@ export default function Agents() {
     load();
   };
 
+  const openLog = (a: Agent) => {
+    const days = a.frequency_days || 30;
+    setDetailAgent(a);
+    setLogForm({ type: 'Call', outcome: '', notes: '', contacted_at: todayISO(), next_due_date: addDaysISO(todayISO(), days) });
+    setShowLogModal(true);
+  };
+
   const openDetail = async (a: Agent) => {
     setDetailAgent(a);
     const res = await fetch(`${API}/agents/${a.id}`, { headers: headers() });
@@ -126,17 +133,17 @@ export default function Agents() {
   };
 
   const submitLog = async () => {
-    if (!detailAgent) return;
+    if (!detailAgent || !logForm.next_due_date) return;
     setLogSaving(true);
     try {
       await fetch(`${API}/agents/${detailAgent.id}/log`, { method: 'POST', headers: headers(), body: JSON.stringify(logForm) });
       setShowLogModal(false);
-      setLogForm({ type: 'Call', outcome: '', notes: '', contacted_at: new Date().toISOString().slice(0, 16) });
+      setLogForm({ type: 'Call', outcome: '', notes: '', contacted_at: todayISO(), next_due_date: addDaysISO(todayISO(), 30) });
       // Refresh detail
       const res = await fetch(`${API}/agents/${detailAgent.id}`, { headers: headers() });
       const data = await res.json();
       setDetailData({ activity: data.activity || [], leads: data.leads || [] });
-      setDetailAgent(prev => prev ? { ...prev, last_contact_date: logForm.contacted_at.slice(0, 10), due_status: 'On Track' } : null);
+      setDetailAgent(prev => prev ? { ...prev, last_contact_date: logForm.contacted_at.slice(0, 10), next_due_date: logForm.next_due_date, due_status: 'On Track' } : null);
       load();
     } finally { setLogSaving(false); }
   };
@@ -294,7 +301,7 @@ export default function Agents() {
                     </td>
                     <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center gap-2">
-                        <button onClick={() => { setDetailAgent(a); setShowLogModal(true); fetch(`${API}/agents/${a.id}`, { headers: headers() }).then(r => r.json()).then(d => setDetailData({ activity: d.activity || [], leads: d.leads || [] })); }} className="text-green-600 hover:text-green-800 text-xs font-medium bg-green-50 px-2 py-1 rounded">Log</button>
+                        <button onClick={() => openLog(a)} className="text-green-600 hover:text-green-800 text-xs font-medium bg-green-50 px-2 py-1 rounded">Log</button>
                         <button onClick={() => openEdit(a)} className="text-blue-600 hover:text-blue-800 text-xs font-medium bg-blue-50 px-2 py-1 rounded">Edit</button>
                         {isAdminOrManager && <button onClick={() => deleteAgent(a.id)} className="text-red-500 hover:text-red-700 text-xs font-medium bg-red-50 px-2 py-1 rounded">Del</button>}
                       </div>
@@ -356,6 +363,10 @@ export default function Agents() {
                   </select>
                 </div>
               )}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Next due</label>
+                <input type="date" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={form.next_due_date} onChange={e => setForm(f => ({ ...f, next_due_date: e.target.value }))} />
+              </div>
               <div className="sm:col-span-2">
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label>
                 <textarea className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" rows={3} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
@@ -387,7 +398,7 @@ export default function Agents() {
                 </div>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => { setShowLogModal(true); }} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700">+ Log Activity</button>
+                <button onClick={() => openLog(detailAgent)} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700">+ Log Activity</button>
                 <button onClick={() => { setDetailAgent(null); setDetailData(null); }} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
               </div>
             </div>
@@ -408,7 +419,16 @@ export default function Agents() {
                 <div className="bg-blue-50 rounded-xl p-4 space-y-2">
                   <div className="flex justify-between"><span className="text-xs text-gray-500">Frequency</span><span className="text-sm font-semibold text-blue-700">{detailAgent.frequency || 'Not set'}</span></div>
                   <div className="flex justify-between"><span className="text-xs text-gray-500">Last Contact</span><span className="text-sm">{formatDate(detailAgent.last_contact_date)}</span></div>
-                  <div className="flex justify-between"><span className="text-xs text-gray-500">Next Due</span><span className={`text-sm font-semibold ${detailAgent.due_status === 'Overdue' ? 'text-red-600' : detailAgent.due_status === 'Due Today' ? 'text-yellow-600' : 'text-gray-700'}`}>{formatDate(detailAgent.next_due_date)}</span></div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-gray-500">Next Due</span>
+                    <input type="date" className="border border-blue-200 rounded-lg px-2 py-1 text-sm" value={(detailAgent.next_due_date || '').slice(0, 10)}
+                      onChange={async e => {
+                        const next_due_date = e.target.value;
+                        await fetch(`${API}/agents/${detailAgent.id}`, { method: 'PUT', headers: headers(), body: JSON.stringify({ next_due_date }) });
+                        setDetailAgent(prev => prev ? { ...prev, next_due_date } : prev);
+                        load();
+                      }} />
+                  </div>
                   {detailAgent.days_overdue > 0 && <div className="text-xs text-red-600 font-medium">{detailAgent.days_overdue} day{detailAgent.days_overdue !== 1 ? 's' : ''} overdue</div>}
                 </div>
               </div>
@@ -472,15 +492,17 @@ export default function Agents() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Date & Time</label>
-                <input type="datetime-local" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={logForm.contacted_at} onChange={e => setLogForm(f => ({ ...f, contacted_at: e.target.value }))} />
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Contact date</label>
+                <input type="date" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={logForm.contacted_at} onChange={e => setLogForm(f => ({ ...f, contacted_at: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Next due *</label>
+                <input type="date" required className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={logForm.next_due_date} onChange={e => setLogForm(f => ({ ...f, next_due_date: e.target.value }))} />
+                <p className="text-xs text-gray-400 mt-1">Pick the calendar date. No time is stored.</p>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label>
                 <textarea className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" rows={3} placeholder="What was discussed? Any follow-up actions?" value={logForm.notes} onChange={e => setLogForm(f => ({ ...f, notes: e.target.value }))} />
-              </div>
-              <div className="bg-blue-50 rounded-lg p-3 text-xs text-blue-700">
-                Next follow-up will be automatically scheduled based on {detailAgent.name}'s frequency ({detailAgent.frequency || 'Monthly'}).
               </div>
             </div>
             <div className="p-6 border-t border-gray-200 flex gap-3 justify-end">

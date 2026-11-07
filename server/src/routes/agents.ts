@@ -18,17 +18,33 @@ const FREQUENCY_DAYS: Record<string, number> = {
 function computeDueStatus(nextDue: string | null, lastContact: string | null): string {
   if (!lastContact) return 'Never Contacted';
   if (!nextDue) return 'On Track';
-  const today = new Date().toISOString().slice(0, 10);
-  if (nextDue < today) return 'Overdue';
-  if (nextDue === today) return 'Due Today';
+  const due = String(nextDue).slice(0, 10);
+  const today = todayISO();
+  if (due < today) return 'Overdue';
+  if (due === today) return 'Due Today';
   return 'On Track';
+}
+
+function addDays(iso: string, days: number): string {
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
+  const dt = new Date(y, (m || 1) - 1, d || 1);
+  dt.setDate(dt.getDate() + days);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+
+function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function daysOverdue(nextDue: string | null): number {
   if (!nextDue) return 0;
-  const today = new Date();
-  const due = new Date(nextDue);
-  const diff = Math.floor((today.getTime() - due.getTime()) / 86400000);
+  const due = String(nextDue).slice(0, 10);
+  const today = todayISO();
+  if (due >= today) return 0;
+  const [y1, m1, d1] = today.split('-').map(Number);
+  const [y2, m2, d2] = due.split('-').map(Number);
+  const diff = Math.round((Date.UTC(y1, m1 - 1, d1) - Date.UTC(y2, m2 - 1, d2)) / 86400000);
   return diff > 0 ? diff : 0;
 }
 
@@ -168,8 +184,9 @@ router.post('/', (req: AuthRequest, res: Response) => {
   const freq = frequency || 'Monthly';
   const freqDays = FREQUENCY_DAYS[freq] || 30;
   const fid = uuidv4();
-  db.prepare('INSERT INTO agent_followups (id,agent_id,user_id,frequency,frequency_days,created_at) VALUES (?,?,?,?,?,?)').run(
-    fid, id, req.user!.role === 'executive' ? req.user!.id : (assigned_to || req.user!.id), freq, freqDays, now
+  const nextDue = (req.body.next_due_date || '').toString().slice(0, 10) || null;
+  db.prepare('INSERT INTO agent_followups (id,agent_id,user_id,frequency,frequency_days,next_due_date,created_at) VALUES (?,?,?,?,?,?,?)').run(
+    fid, id, req.user!.role === 'executive' ? req.user!.id : (assigned_to || req.user!.id), freq, freqDays, nextDue, now
   );
   const agent = db.prepare('SELECT * FROM agents WHERE id=?').get(id) as any;
   const followup = db.prepare('SELECT * FROM agent_followups WHERE agent_id=?').get(id) as any;
@@ -181,7 +198,7 @@ router.put('/:id', (req: AuthRequest, res: Response) => {
   const agent = db.prepare('SELECT * FROM agents WHERE id=?').get(req.params.id) as any;
   if (!agent) return res.status(404).json({ error: 'Not found' });
   if (denyUnlessOwner(req, res, agent.assigned_to)) return;
-  const { name, agency_name, type, country, city, phone, email, website, specialization, tier, status, assigned_to, property_id, notes, frequency } = req.body;
+  const { name, agency_name, type, country, city, phone, email, website, specialization, tier, status, assigned_to, property_id, notes, frequency, next_due_date } = req.body;
   const assignee = req.user!.role === 'executive' ? req.user!.id : (assigned_to ?? agent.assigned_to);
   db.prepare(`UPDATE agents SET name=?,agency_name=?,type=?,country=?,city=?,phone=?,email=?,website=?,specialization=?,tier=?,status=?,assigned_to=?,property_id=?,notes=? WHERE id=?`).run(
     name??agent.name, agency_name??agent.agency_name, type??agent.type, country??agent.country, city??agent.city,
@@ -190,16 +207,22 @@ router.put('/:id', (req: AuthRequest, res: Response) => {
     notes??agent.notes, req.params.id
   );
   // Update cadence if frequency changed
+  if (next_due_date) {
+    const due = String(next_due_date).slice(0, 10);
+    const existingDue = db.prepare('SELECT id FROM agent_followups WHERE agent_id=?').get(req.params.id) as any;
+    if (existingDue) db.prepare('UPDATE agent_followups SET next_due_date=? WHERE agent_id=?').run(due, req.params.id);
+    else db.prepare('INSERT INTO agent_followups (id,agent_id,user_id,frequency,frequency_days,next_due_date,created_at) VALUES (?,?,?,?,?,?,?)').run(
+      uuidv4(), req.params.id, assignee, 'Monthly', 30, due, new Date().toISOString()
+    );
+  }
   if (frequency) {
     const freqDays = FREQUENCY_DAYS[frequency] || 30;
     const existing = db.prepare('SELECT * FROM agent_followups WHERE agent_id=?').get(req.params.id) as any;
     if (existing) {
       // Recompute next_due if last_contact exists
       let nextDue = existing.next_due_date;
-      if (existing.last_contact_date) {
-        const d = new Date(existing.last_contact_date);
-        d.setDate(d.getDate() + freqDays);
-        nextDue = d.toISOString().slice(0, 10);
+      if (!next_due_date && existing.last_contact_date) {
+        nextDue = addDays(String(existing.last_contact_date).slice(0, 10), freqDays);
       }
       db.prepare('UPDATE agent_followups SET frequency=?,frequency_days=?,next_due_date=? WHERE agent_id=?').run(frequency, freqDays, nextDue, req.params.id);
     } else {
@@ -228,30 +251,26 @@ router.post('/:id/log', (req: AuthRequest, res: Response) => {
   if (!agent) return res.status(404).json({ error: 'Agent not found' });
   if (denyUnlessOwner(req, res, agent.assigned_to)) return;
 
-  const { type, outcome, notes, contacted_at } = req.body;
+  const { type, outcome, notes, contacted_at, next_due_date } = req.body;
   if (!type) return res.status(400).json({ error: 'type required' });
 
   const logId = uuidv4();
-  const contactedDate = contacted_at || new Date().toISOString();
+  const contactedDay = (contacted_at || todayISO()).toString().slice(0, 10);
   const now = new Date().toISOString();
   db.prepare('INSERT INTO agent_activity_log (id,agent_id,user_id,type,outcome,notes,contacted_at,created_at) VALUES (?,?,?,?,?,?,?,?)').run(
-    logId, req.params.id, req.user!.id, type, outcome||'', notes||'', contactedDate, now
+    logId, req.params.id, req.user!.id, type, outcome||'', notes||'', contactedDay, now
   );
 
-  // Update followup cadence — compute next due
   const followup = db.prepare('SELECT * FROM agent_followups WHERE agent_id=?').get(req.params.id) as any;
+  const chosenDue = (next_due_date || '').toString().slice(0, 10);
+  const nextDueStr = /^\d{4}-\d{2}-\d{2}$/.test(chosenDue)
+    ? chosenDue
+    : addDays(contactedDay, followup?.frequency_days || 30);
   if (followup) {
-    const contactedDay = contactedDate.slice(0, 10);
-    const nextDue = new Date(contactedDay);
-    nextDue.setDate(nextDue.getDate() + followup.frequency_days);
-    const nextDueStr = nextDue.toISOString().slice(0, 10);
     db.prepare('UPDATE agent_followups SET last_contact_date=?,next_due_date=? WHERE agent_id=?').run(contactedDay, nextDueStr, req.params.id);
   } else {
-    // Create default cadence
-    const nextDue = new Date();
-    nextDue.setDate(nextDue.getDate() + 30);
     db.prepare('INSERT INTO agent_followups (id,agent_id,user_id,frequency,frequency_days,last_contact_date,next_due_date,created_at) VALUES (?,?,?,?,?,?,?,?)').run(
-      uuidv4(), req.params.id, req.user!.id, 'Monthly', 30, new Date().toISOString().slice(0, 10), nextDue.toISOString().slice(0, 10), now
+      uuidv4(), req.params.id, req.user!.id, 'Monthly', 30, contactedDay, nextDueStr, now
     );
   }
 

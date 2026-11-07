@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuthStore } from '../store/auth';
 import {
   ACTIVITY_TYPES, ACTIVITY_OUTCOMES, DUE_STATUS_CONFIG,
-  TIER_CONFIG, overdueUrgencyColor, formatDate
+  TIER_CONFIG, overdueUrgencyColor, formatDate, todayISO, addDaysISO
 } from '../lib/utils';
 
 const API = '/api';
@@ -28,7 +28,7 @@ export default function AgentDue() {
   const [loading, setLoading] = useState(true);
   const [showLogModal, setShowLogModal] = useState(false);
   const [logAgent, setLogAgent] = useState<DueAgent | null>(null);
-  const [logForm, setLogForm] = useState({ type: 'Call', outcome: '', notes: '', contacted_at: new Date().toISOString().slice(0, 16) });
+  const [logForm, setLogForm] = useState({ type: 'Call', outcome: '', notes: '', contacted_at: todayISO(), next_due_date: addDaysISO(todayISO(), 30) });
   const [logSaving, setLogSaving] = useState(false);
   const [tab, setTab] = useState<'due' | 'leaderboard'>('due');
 
@@ -53,12 +53,12 @@ export default function AgentDue() {
 
   const openLog = (a: DueAgent) => {
     setLogAgent(a);
-    setLogForm({ type: 'Call', outcome: '', notes: '', contacted_at: new Date().toISOString().slice(0, 16) });
+    setLogForm({ type: 'Call', outcome: '', notes: '', contacted_at: todayISO(), next_due_date: addDaysISO(todayISO(), a.frequency_days || 30) });
     setShowLogModal(true);
   };
 
   const submitLog = async () => {
-    if (!logAgent) return;
+    if (!logAgent || !logForm.next_due_date) return;
     setLogSaving(true);
     try {
       await fetch(`${API}/agents/${logAgent.id}/log`, { method: 'POST', headers: headers(), body: JSON.stringify(logForm) });
@@ -311,8 +311,13 @@ export default function AgentDue() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Date & Time</label>
-                <input type="datetime-local" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={logForm.contacted_at} onChange={e => setLogForm(f => ({ ...f, contacted_at: e.target.value }))} />
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Contact date</label>
+                <input type="date" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={logForm.contacted_at} onChange={e => setLogForm(f => ({ ...f, contacted_at: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Next due *</label>
+                <input type="date" required className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={logForm.next_due_date} onChange={e => setLogForm(f => ({ ...f, next_due_date: e.target.value }))} />
+                <p className="text-xs text-gray-400 mt-1">Choose the next follow-up from the calendar. Time is not saved.</p>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label>
@@ -320,7 +325,7 @@ export default function AgentDue() {
               </div>
               {logAgent.days_overdue > 0 && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-700">
-                  This agent is {logAgent.days_overdue} day{logAgent.days_overdue !== 1 ? 's' : ''} overdue. Logging this contact will reschedule the next follow-up.
+                  This agent is {logAgent.days_overdue} day{logAgent.days_overdue !== 1 ? 's' : ''} overdue. Pick the next due date above.
                 </div>
               )}
             </div>
