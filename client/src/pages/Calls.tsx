@@ -63,45 +63,87 @@ export default function Calls() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="page-header">
-        <h1 className="page-title">📞 Call Tracker</h1>
-        <button className="btn-primary" onClick={openCreate}>+ Log Call</button>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">📞 Call Tracker</h1>
+          <p className="text-xs text-gray-400 mt-0.5">{calls.length} calls</p>
+        </div>
+        <button className="btn-primary text-sm px-3 py-2 sm:px-4" onClick={openCreate}>+ Log Call</button>
       </div>
 
-      {/* Filters */}
-      <div className="card">
-        <div className="flex flex-wrap gap-3">
-          <select className="select w-36" value={filters.segment} onChange={e => setFilters(f => ({ ...f, segment: e.target.value }))}>
+      {/* Filters — horizontal scroll on mobile */}
+      <div className="bg-white rounded-xl border border-gray-200 p-3">
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          <select className="select flex-shrink-0 text-xs w-28 py-1.5" value={filters.segment} onChange={e => setFilters(f => ({ ...f, segment: e.target.value }))}>
             <option value="">All Segments</option>
             {SEGMENTS.map(s => <option key={s}>{s}</option>)}
           </select>
-          <select className="select w-44" value={filters.outcome} onChange={e => setFilters(f => ({ ...f, outcome: e.target.value }))}>
+          <select className="select flex-shrink-0 text-xs w-36 py-1.5" value={filters.outcome} onChange={e => setFilters(f => ({ ...f, outcome: e.target.value }))}>
             <option value="">All Outcomes</option>
             {CALL_OUTCOMES.map(o => <option key={o}>{o}</option>)}
           </select>
-          <input type="date" className="input w-36" value={filters.from} onChange={e => setFilters(f => ({ ...f, from: e.target.value }))} placeholder="From" />
-          <input type="date" className="input w-36" value={filters.to} onChange={e => setFilters(f => ({ ...f, to: e.target.value }))} placeholder="To" />
+          <input type="date" className="input flex-shrink-0 w-32 text-xs py-1.5" value={filters.from} onChange={e => setFilters(f => ({ ...f, from: e.target.value }))} />
+          <input type="date" className="input flex-shrink-0 w-32 text-xs py-1.5" value={filters.to} onChange={e => setFilters(f => ({ ...f, to: e.target.value }))} />
           {isManager() && (
-            <select className="select w-44" value={filters.user_id} onChange={e => setFilters(f => ({ ...f, user_id: e.target.value }))}>
+            <select className="select flex-shrink-0 text-xs w-36 py-1.5" value={filters.user_id} onChange={e => setFilters(f => ({ ...f, user_id: e.target.value }))}>
               <option value="">All Staff</option>
               {users.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           )}
-          <button className="btn-ghost text-sm" onClick={() => setFilters({ segment: '', outcome: '', from: '', to: '', user_id: '' })}>Clear</button>
+          {Object.values(filters).some(v => v) && (
+            <button className="btn-ghost text-xs flex-shrink-0 px-3 py-1.5" onClick={() => setFilters({ segment: '', outcome: '', from: '', to: '', user_id: '' })}>✕ Clear</button>
+          )}
         </div>
       </div>
 
-      {/* Table */}
-      <div className="card overflow-x-auto">
-        <p className="text-sm text-gray-400 mb-3">{calls.length} calls found</p>
+      {/* Cards on mobile, table on desktop */}
+      <div className="md:hidden space-y-2">
+        {calls.length === 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 py-12 text-center text-gray-400">
+            No calls found. Tap ⚡ Quick Log or + Log Call.
+          </div>
+        )}
+        {calls.map(call => (
+          <div key={call.id} className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-gray-900 text-sm">{call.contact_name || '—'}</span>
+                  <span className={`badge text-xs ${SEGMENT_COLORS[call.segment] || 'bg-gray-100 text-gray-600'}`}>{call.segment}</span>
+                </div>
+                {call.company && <p className="text-xs text-gray-500 mt-0.5">{call.company}</p>}
+                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                  <span className={`badge text-xs ${OUTCOME_COLORS[call.outcome] || 'bg-gray-100 text-gray-600'}`}>{call.outcome}</span>
+                  <span className="text-xs text-gray-400">{call.call_type}</span>
+                  {call.duration_min > 0 && <span className="text-xs text-gray-400">{call.duration_min}m</span>}
+                </div>
+                {call.notes && <p className="text-xs text-gray-500 mt-1.5 line-clamp-2">{call.notes}</p>}
+                {call.next_action && (
+                  <p className="text-xs text-blue-600 mt-1">→ {call.next_action} {call.next_action_date ? `by ${formatDate(call.next_action_date)}` : ''}</p>
+                )}
+              </div>
+              <div className="text-right flex-shrink-0">
+                <p className="text-xs text-gray-400">{formatDate(call.created_at)}</p>
+                <div className="flex gap-1 mt-2">
+                  <button className="text-xs text-blue-600 font-medium px-2 py-1 bg-blue-50 rounded" onClick={() => openEdit(call)}>Edit</button>
+                  <button className="text-xs text-red-500 font-medium px-2 py-1 bg-red-50 rounded" onClick={() => setDeleteId(call.id)}>Del</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden md:block card overflow-x-auto">
         <table className="w-full text-sm">
           <thead><tr className="text-left text-xs text-gray-500 border-b border-gray-100">
             <th className="pb-2 font-medium">Contact / Company</th>
             <th className="pb-2 font-medium">Segment</th>
             <th className="pb-2 font-medium">Type</th>
             <th className="pb-2 font-medium">Outcome</th>
-            <th className="pb-2 font-medium hidden md:table-cell">Next Action</th>
+            <th className="pb-2 font-medium">Next Action</th>
             <th className="pb-2 font-medium hidden lg:table-cell">By</th>
             <th className="pb-2 font-medium">Date</th>
             <th className="pb-2 font-medium">Actions</th>
@@ -116,7 +158,7 @@ export default function Calls() {
                 <td className="py-3 pr-4"><span className={`badge ${SEGMENT_COLORS[call.segment] || 'bg-gray-100 text-gray-600'}`}>{call.segment}</span></td>
                 <td className="py-3 pr-4 text-gray-600">{call.call_type}</td>
                 <td className="py-3 pr-4"><span className={`badge ${OUTCOME_COLORS[call.outcome] || 'bg-gray-100 text-gray-600'}`}>{call.outcome}</span></td>
-                <td className="py-3 pr-4 hidden md:table-cell">
+                <td className="py-3 pr-4">
                   {call.next_action ? <><p className="text-xs">{call.next_action}</p><p className="text-xs text-gray-400">{formatDate(call.next_action_date)}</p></> : '—'}
                 </td>
                 <td className="py-3 pr-4 hidden lg:table-cell text-gray-500 text-xs">{call.user_name}</td>
@@ -129,7 +171,7 @@ export default function Calls() {
                 </td>
               </tr>
             ))}
-            {calls.length === 0 && <tr><td colSpan={8} className="py-12 text-center text-gray-400">No calls found. Click "+ Log Call" to add your first call.</td></tr>}
+            {calls.length === 0 && <tr><td colSpan={8} className="py-12 text-center text-gray-400">No calls yet.</td></tr>}
           </tbody>
         </table>
       </div>

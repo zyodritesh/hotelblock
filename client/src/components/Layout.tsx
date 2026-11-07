@@ -3,6 +3,8 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/auth';
 import { api } from '../api/client';
 import { cn } from '../lib/utils';
+import MobileBottomNav from './MobileBottomNav';
+import QuickLogModal from './QuickLogModal';
 
 const NAV_ITEMS = [
   { path: '/', label: 'Dashboard', icon: '📊' },
@@ -30,6 +32,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [properties, setProperties] = useState<Property[]>([]);
   const [overdueCount, setOverdueCount] = useState(0);
+  const [showQuickLog, setShowQuickLog] = useState(false);
 
   useEffect(() => {
     api.get<Property[]>('/properties').then(data => {
@@ -161,10 +164,24 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             {user?.name?.[0]?.toUpperCase()}
           </div>
         </div>
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+        <main className="flex-1 overflow-y-auto p-4 lg:p-6 pb-24 lg:pb-6">
           {children}
         </main>
       </div>
+
+      {/* Mobile bottom nav */}
+      <MobileBottomNav overdueCount={overdueCount} />
+
+      {/* Desktop FAB — Quick Log */}
+      <button
+        onClick={() => setShowQuickLog(true)}
+        className="hidden lg:flex fixed bottom-6 right-6 z-40 items-center gap-2 bg-blue-600 text-white px-4 py-3 rounded-full shadow-lg hover:bg-blue-700 active:scale-95 transition-all font-semibold text-sm"
+        title="Quick Log Call"
+      >
+        <span className="text-lg leading-none">⚡</span> Quick Log
+      </button>
+
+      {showQuickLog && <QuickLogModal onClose={() => setShowQuickLog(false)} onSaved={() => setShowQuickLog(false)} />}
     </div>
   );
 }

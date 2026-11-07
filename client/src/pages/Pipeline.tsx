@@ -73,34 +73,69 @@ export default function Pipeline() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="page-header">
-        <h1 className="page-title">🔄 Sales Pipeline</h1>
-        <div className="flex items-center gap-3">
-          <div className="flex border border-gray-200 rounded-lg overflow-hidden">
-            <button className={cn('px-3 py-2 text-sm', viewMode === 'kanban' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50')} onClick={() => setViewMode('kanban')}>Kanban</button>
-            <button className={cn('px-3 py-2 text-sm', viewMode === 'table' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50')} onClick={() => setViewMode('table')}>Table</button>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">🔄 Sales Pipeline</h1>
+          <p className="text-xs text-gray-400 mt-0.5">{leads.length} leads · {formatCurrency(leads.reduce((s, l) => s + l.estimated_revenue, 0))}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="hidden sm:flex border border-gray-200 rounded-lg overflow-hidden">
+            <button className={cn('px-3 py-1.5 text-sm', viewMode === 'kanban' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50')} onClick={() => setViewMode('kanban')}>Kanban</button>
+            <button className={cn('px-3 py-1.5 text-sm', viewMode === 'table' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50')} onClick={() => setViewMode('table')}>Table</button>
           </div>
-          <button className="btn-primary" onClick={openCreate}>+ Add Lead</button>
+          <button className="btn-primary text-sm px-3 py-2" onClick={openCreate}>+ Add Lead</button>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
-        <select className="select w-36" value={filters.segment} onChange={e => setFilters(f => ({ ...f, segment: e.target.value }))}>
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        <select className="select flex-shrink-0 text-xs w-28 py-1.5" value={filters.segment} onChange={e => setFilters(f => ({ ...f, segment: e.target.value }))}>
           <option value="">All Segments</option>
           {SEGMENTS.map(s => <option key={s}>{s}</option>)}
         </select>
         {isManager() && (
-          <select className="select w-44" value={filters.user_id} onChange={e => setFilters(f => ({ ...f, user_id: e.target.value }))}>
+          <select className="select flex-shrink-0 text-xs w-36 py-1.5" value={filters.user_id} onChange={e => setFilters(f => ({ ...f, user_id: e.target.value }))}>
             <option value="">All Staff</option>
             {users.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
         )}
       </div>
 
+      {/* Mobile card list — shown on small screens regardless of viewMode */}
+      <div className="sm:hidden space-y-2">
+        {leads.length === 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 py-12 text-center text-gray-400">No leads found.</div>
+        )}
+        {leads.map(lead => (
+          <div key={lead.id} className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-gray-900 text-sm leading-tight">{lead.title}</p>
+                <div className="flex gap-2 mt-1 flex-wrap">
+                  <span className={`badge text-xs ${SEGMENT_COLORS[lead.segment]}`}>{lead.segment}</span>
+                  <span className={`badge text-xs ${STAGE_COLORS[lead.stage]}`}>{lead.stage}</span>
+                </div>
+                <p className="text-sm font-bold text-green-600 mt-2">{formatCurrency(lead.estimated_revenue)}</p>
+                {lead.event_date && <p className="text-xs text-gray-400 mt-0.5">📅 {formatDate(lead.event_date)}</p>}
+                <div className="mt-2">
+                  <select className="border border-gray-200 rounded-lg text-xs px-2 py-1.5 bg-gray-50 w-full" value={lead.stage} onChange={e => moveStage(lead.id, e.target.value)}>
+                    {PIPELINE_STAGES.map(s => <option key={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="flex-shrink-0 flex flex-col gap-1">
+                <button className="text-xs text-blue-600 font-medium px-2 py-1 bg-blue-50 rounded" onClick={() => openEdit(lead)}>Edit</button>
+                <button className="text-xs text-red-500 font-medium px-2 py-1 bg-red-50 rounded" onClick={() => setDeleteId(lead.id)}>Del</button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop: Kanban or Table */}
       {viewMode === 'kanban' ? (
-        <div className="flex gap-3 overflow-x-auto pb-4">
+        <div className="hidden sm:flex gap-3 overflow-x-auto pb-4">
           {PIPELINE_STAGES.map(stage => {
             const stageLeads = leads.filter(l => l.stage === stage);
             const stageValue = stageLeads.reduce((s, l) => s + l.estimated_revenue, 0);
@@ -145,7 +180,7 @@ export default function Pipeline() {
           })}
         </div>
       ) : (
-        <div className="card overflow-x-auto">
+        <div className="hidden sm:block card overflow-x-auto">
           <table className="w-full text-sm">
             <thead><tr className="text-left text-xs text-gray-500 border-b border-gray-100">
               <th className="pb-2 font-medium">Lead</th>
