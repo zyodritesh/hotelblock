@@ -16,6 +16,8 @@ import attendanceRoutes from './routes/attendance';
 import targetsRoutes from './routes/targets';
 import reportsRoutes from './routes/reports';
 import settingsRoutes from './routes/settings';
+import propertiesRoutes from './routes/properties';
+import agentsRoutes from './routes/agents';
 
 initDb();
 
@@ -25,6 +27,9 @@ const PORT = process.env.PORT || 3001;
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, '../../uploads')));
+// Serve nested upload dirs
+app.use('/uploads/logos', express.static(path.join(__dirname, '../../uploads/logos')));
+app.use('/uploads/proposals', express.static(path.join(__dirname, '../../uploads/proposals')));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
@@ -39,6 +44,8 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/targets', targetsRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/properties', propertiesRoutes);
+app.use('/api/agents', agentsRoutes);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 

@@ -11,11 +11,23 @@ const COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f97316'];
 export default function Dashboard() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const { user } = useAuthStore();
+  const [agentsDue, setAgentsDue] = useState<any[]>([]);
+  const [agentCompliance, setAgentCompliance] = useState<number | null>(null);
+  const { user, token } = useAuthStore();
 
   useEffect(() => {
     api.get<any>('/reports/dashboard').then(setData).finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!token) return;
+    const h = { Authorization: `Bearer ${token}` };
+    fetch('/api/agents/due-today', { headers: h }).then(r => r.json()).then(d => setAgentsDue(Array.isArray(d) ? d.slice(0, 5) : [])).catch(() => {});
+    fetch('/api/agents/compliance', { headers: h }).then(r => r.json()).then((d: any[]) => {
+      const me = Array.isArray(d) ? d.find(c => c.user_id === user?.id) : null;
+      if (me) setAgentCompliance(me.compliance_pct);
+    }).catch(() => {});
+  }, [token, user?.id]);
 
   if (loading) return <div className="flex items-center justify-center h-64 text-gray-500">Loading dashboard…</div>;
   if (!data) return null;
@@ -41,6 +53,49 @@ export default function Dashboard() {
         <KpiCard title="Pipeline Value" value={formatCurrency(data.pipelineValue)} icon="💰" color="green" />
         <KpiCard title="Closed (MTD)" value={formatCurrency(data.closedRevenueMTD)} icon="🏆" color="green" />
       </div>
+
+      {/* Agent Network KPIs */}
+      {(agentsDue.length > 0 || agentCompliance !== null) && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="card lg:col-span-2">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-gray-800">🌐 Agent Follow-ups Due</h3>
+              <Link to="/agents/due" className="text-sm text-blue-600 hover:underline">View all →</Link>
+            </div>
+            {agentsDue.length === 0 ? (
+              <p className="text-green-600 text-sm font-medium">✓ All agents contacted — great job!</p>
+            ) : (
+              <div className="space-y-2">
+                {agentsDue.map((a: any) => (
+                  <div key={a.id} className={`flex items-center justify-between py-2 px-3 rounded-lg border-l-4 ${a.due_status === 'Overdue' ? 'border-red-400 bg-red-50' : a.due_status === 'Due Today' ? 'border-yellow-400 bg-yellow-50' : 'border-gray-300 bg-gray-50'}`}>
+                    <div>
+                      <span className="text-sm font-medium text-gray-900">{a.name}</span>
+                      {a.agency_name && <span className="text-xs text-gray-500 ml-2">{a.agency_name}</span>}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {a.days_overdue > 0 && <span className="text-xs text-red-600 font-semibold">+{a.days_overdue}d overdue</span>}
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${a.due_status === 'Overdue' ? 'bg-red-100 text-red-700' : a.due_status === 'Due Today' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>{a.due_status}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {agentCompliance !== null && (
+            <div className="card flex flex-col justify-between">
+              <h3 className="font-semibold text-gray-800 mb-3">Agent Compliance</h3>
+              <div className="flex flex-col items-center justify-center flex-1 gap-3">
+                <div className={`text-5xl font-bold ${agentCompliance >= 80 ? 'text-green-600' : agentCompliance >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>{agentCompliance}%</div>
+                <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+                  <div className={`h-3 rounded-full ${agentCompliance >= 80 ? 'bg-green-500' : agentCompliance >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${agentCompliance}%` }} />
+                </div>
+                <p className="text-xs text-gray-500 text-center">Monthly agent contact rate</p>
+              </div>
+              <Link to="/agents/due" className="mt-3 text-center text-sm text-blue-600 hover:underline">Go to My Follow-ups →</Link>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Pipeline by Stage */}

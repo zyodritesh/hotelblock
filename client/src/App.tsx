@@ -15,6 +15,8 @@ import Tasks from './pages/Tasks';
 import Targets from './pages/Targets';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
+import Agents from './pages/Agents';
+import AgentDue from './pages/AgentDue';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { token } = useAuthStore();
@@ -45,6 +47,8 @@ export default function App() {
         <Route path="/targets" element={<RequireAuth><Targets /></RequireAuth>} />
         <Route path="/reports" element={<RequireAuth><Reports /></RequireAuth>} />
         <Route path="/settings" element={<RequireAuth><RequireAdmin><Settings /></RequireAdmin></RequireAuth>} />
+        <Route path="/agents" element={<RequireAuth><Agents /></RequireAuth>} />
+        <Route path="/agents/due" element={<RequireAuth><AgentDue /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

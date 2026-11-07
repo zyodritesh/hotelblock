@@ -63,3 +63,32 @@ export const OUTCOME_COLORS: Record<string, string> = {
 export function gradeColor(grade: string): string {
   return { A: 'text-green-600', B: 'text-blue-600', C: 'text-yellow-600', D: 'text-red-600' }[grade] || 'text-gray-500';
 }
+
+// Agent Network
+export const AGENT_TYPES = ['Travel Agent', 'DMC', 'Corporate', 'OTA', 'MICE Agency', 'Wedding Planner', 'Tour Operator', 'Event Company', 'Airlines', 'Consulate / Embassy', 'Other'] as const;
+export const AGENT_SPECIALIZATIONS = ['Leisure', 'Business / Corporate', 'MICE', 'Wedding & Social', 'Groups & FIT', 'Adventure', 'Luxury', 'Budget'] as const;
+export const AGENT_TIERS = ['A', 'B', 'C', 'D'] as const;
+export const AGENT_STATUSES = ['Active', 'Dormant', 'Inactive'] as const;
+export const FOLLOW_UP_FREQUENCIES = ['Weekly', 'Fortnightly', 'Monthly', 'Quarterly', 'Bi-annual', 'Annual'] as const;
+export const ACTIVITY_TYPES = ['Call', 'Email', 'WhatsApp', 'Meeting', 'Site Visit', 'Fam Trip', 'Rate Sheet Sent', 'Newsletter', 'Other'] as const;
+export const ACTIVITY_OUTCOMES = ['Interested', 'Sent Rates', 'Booked', 'No Response', 'Follow-up Needed', 'Not Interested', 'Meeting Scheduled'] as const;
+
+export const TIER_CONFIG: Record<string, { label: string; color: string; desc: string }> = {
+  A: { label: 'Tier A', color: 'bg-yellow-100 text-yellow-800', desc: 'Top Producer' },
+  B: { label: 'Tier B', color: 'bg-blue-100 text-blue-800', desc: 'Active' },
+  C: { label: 'Tier C', color: 'bg-gray-100 text-gray-700', desc: 'Potential' },
+  D: { label: 'Tier D', color: 'bg-red-100 text-red-600', desc: 'Dormant' },
+};
+
+export const DUE_STATUS_CONFIG: Record<string, { color: string; bg: string; dot: string; label: string }> = {
+  'On Track':       { color: 'text-green-700',  bg: 'bg-green-100',  dot: 'bg-green-500',  label: 'On Track' },
+  'Due Today':      { color: 'text-yellow-700', bg: 'bg-yellow-100', dot: 'bg-yellow-500', label: 'Due Today' },
+  'Overdue':        { color: 'text-red-700',    bg: 'bg-red-100',    dot: 'bg-red-500',    label: 'Overdue' },
+  'Never Contacted':{ color: 'text-gray-600',   bg: 'bg-gray-100',   dot: 'bg-gray-400',   label: 'Never Contacted' },
+};
+
+export function overdueUrgencyColor(daysOverdue: number): string {
+  if (daysOverdue === 0) return 'border-l-yellow-400 bg-yellow-50';
+  if (daysOverdue <= 3) return 'border-l-orange-400 bg-orange-50';
+  return 'border-l-red-500 bg-red-50';
+}

@@ -23,6 +23,21 @@ export function initDb() {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS properties (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      address TEXT,
+      city TEXT,
+      phone TEXT,
+      email TEXT,
+      website TEXT,
+      gst_number TEXT,
+      logo_path TEXT,
+      brand_color TEXT NOT NULL DEFAULT '#2563eb',
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS accounts (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -55,6 +70,7 @@ export function initDb() {
       company TEXT,
       phone TEXT,
       user_id TEXT NOT NULL,
+      property_id TEXT,
       segment TEXT NOT NULL,
       call_type TEXT NOT NULL,
       duration_min INTEGER DEFAULT 0,
@@ -73,6 +89,7 @@ export function initDb() {
       contact_name TEXT,
       company TEXT,
       user_id TEXT NOT NULL,
+      property_id TEXT,
       segment TEXT NOT NULL,
       purpose TEXT,
       outcome TEXT,
@@ -92,6 +109,7 @@ export function initDb() {
       account_id TEXT,
       contact_id TEXT,
       user_id TEXT NOT NULL,
+      property_id TEXT,
       title TEXT NOT NULL,
       segment TEXT NOT NULL,
       stage TEXT NOT NULL DEFAULT 'Prospect',
@@ -125,10 +143,26 @@ export function initDb() {
       id TEXT PRIMARY KEY,
       lead_id TEXT,
       user_id TEXT NOT NULL,
+      property_id TEXT,
       title TEXT NOT NULL,
+      ref_number TEXT,
       status TEXT NOT NULL DEFAULT 'Draft',
+      client_name TEXT,
+      client_company TEXT,
+      client_phone TEXT,
+      client_email TEXT,
+      event_date TEXT,
+      event_type TEXT,
+      venue TEXT,
+      pax INTEGER DEFAULT 0,
+      validity_date TEXT,
+      payment_terms TEXT,
+      cancellation_policy TEXT,
+      tax_percent REAL DEFAULT 18,
+      discount REAL DEFAULT 0,
       total_value REAL DEFAULT 0,
       line_items TEXT DEFAULT '[]',
+      photos TEXT DEFAULT '[]',
       notes TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -139,6 +173,7 @@ export function initDb() {
     CREATE TABLE IF NOT EXISTS attendance (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
+      property_id TEXT,
       date TEXT NOT NULL,
       check_in_at TEXT,
       check_out_at TEXT,
@@ -165,6 +200,7 @@ export function initDb() {
     CREATE TABLE IF NOT EXISTS targets (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
+      property_id TEXT,
       month TEXT NOT NULL,
       segment TEXT NOT NULL DEFAULT 'All',
       calls_target INTEGER DEFAULT 0,
@@ -197,7 +233,87 @@ export function initDb() {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS agents (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      agency_name TEXT,
+      type TEXT NOT NULL DEFAULT 'Travel Agent',
+      country TEXT,
+      city TEXT,
+      phone TEXT,
+      email TEXT,
+      website TEXT,
+      specialization TEXT,
+      tier TEXT NOT NULL DEFAULT 'B',
+      status TEXT NOT NULL DEFAULT 'Active',
+      assigned_to TEXT,
+      property_id TEXT,
+      notes TEXT,
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS agent_followups (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL UNIQUE,
+      user_id TEXT NOT NULL,
+      frequency TEXT NOT NULL DEFAULT 'Monthly',
+      frequency_days INTEGER NOT NULL DEFAULT 30,
+      last_contact_date TEXT,
+      next_due_date TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS agent_activity_log (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'Call',
+      outcome TEXT,
+      notes TEXT,
+      attachments TEXT NOT NULL DEFAULT '[]',
+      contacted_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
   `);
+
+  // Run migrations for existing DBs (add new columns if missing)
+  const migrations = [
+    "ALTER TABLE calls ADD COLUMN property_id TEXT",
+    "ALTER TABLE meetings ADD COLUMN property_id TEXT",
+    "ALTER TABLE leads ADD COLUMN property_id TEXT",
+    "ALTER TABLE attendance ADD COLUMN property_id TEXT",
+    "ALTER TABLE targets ADD COLUMN property_id TEXT",
+    "ALTER TABLE proposals ADD COLUMN property_id TEXT",
+    "ALTER TABLE proposals ADD COLUMN ref_number TEXT",
+    "ALTER TABLE proposals ADD COLUMN client_name TEXT",
+    "ALTER TABLE proposals ADD COLUMN client_company TEXT",
+    "ALTER TABLE proposals ADD COLUMN client_phone TEXT",
+    "ALTER TABLE proposals ADD COLUMN client_email TEXT",
+    "ALTER TABLE proposals ADD COLUMN event_date TEXT",
+    "ALTER TABLE proposals ADD COLUMN event_type TEXT",
+    "ALTER TABLE proposals ADD COLUMN venue TEXT",
+    "ALTER TABLE proposals ADD COLUMN pax INTEGER DEFAULT 0",
+    "ALTER TABLE proposals ADD COLUMN validity_date TEXT",
+    "ALTER TABLE proposals ADD COLUMN payment_terms TEXT",
+    "ALTER TABLE proposals ADD COLUMN cancellation_policy TEXT",
+    "ALTER TABLE proposals ADD COLUMN tax_percent REAL DEFAULT 18",
+    "ALTER TABLE proposals ADD COLUMN discount REAL DEFAULT 0",
+    "ALTER TABLE proposals ADD COLUMN photos TEXT DEFAULT '[]'",
+    "ALTER TABLE properties ADD COLUMN website TEXT",
+    "ALTER TABLE properties ADD COLUMN brand_color TEXT NOT NULL DEFAULT '#2563eb'",
+    // agent tables created via CREATE TABLE IF NOT EXISTS above — no ALTER needed
+  ];
+
+  for (const sql of migrations) {
+    try { db.exec(sql); } catch { /* column already exists */ }
+  }
 
   // Insert default geofence row if not exists
   const gf = db.prepare('SELECT id FROM geofence WHERE id=1').get();

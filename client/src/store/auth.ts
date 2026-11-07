@@ -11,8 +11,10 @@ interface User {
 interface AuthState {
   user: User | null;
   token: string | null;
+  activePropertyId: string | null;
   login: (user: User, token: string) => void;
   logout: () => void;
+  setActiveProperty: (id: string | null) => void;
   isAdmin: () => boolean;
   isManager: () => boolean;
 }
@@ -22,8 +24,10 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       user: null,
       token: null,
+      activePropertyId: null,
       login: (user, token) => set({ user, token }),
-      logout: () => set({ user: null, token: null }),
+      logout: () => set({ user: null, token: null, activePropertyId: null }),
+      setActiveProperty: (id) => set({ activePropertyId: id }),
       isAdmin: () => get().user?.role === 'admin',
       isManager: () => ['admin', 'manager'].includes(get().user?.role || ''),
     }),
