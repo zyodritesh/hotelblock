@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../db';
-import { authenticate, AuthRequest } from '../middleware/auth';
+import { authenticate, denyUnlessOwner, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 router.use(authenticate);
@@ -145,6 +145,7 @@ router.get('/compliance', (req: AuthRequest, res: Response) => {
 router.get('/:id', (req: AuthRequest, res: Response) => {
   const agent = db.prepare(`SELECT a.*, u.name as assigned_name FROM agents a LEFT JOIN users u ON a.assigned_to=u.id WHERE a.id=?`).get(req.params.id) as any;
   if (!agent) return res.status(404).json({ error: 'Not found' });
+  if (denyUnlessOwner(req, res, agent.assigned_to)) return;
   const followup = db.prepare('SELECT * FROM agent_followups WHERE agent_id=?').get(req.params.id) as any;
   const activity = db.prepare(`SELECT l.*, u.name as user_name FROM agent_activity_log l LEFT JOIN users u ON l.user_id=u.id WHERE l.agent_id=? ORDER BY l.contacted_at DESC`).all(req.params.id);
   const leads = db.prepare(`SELECT id, title, segment, stage, estimated_revenue, event_date FROM leads WHERE contact_id IN (SELECT id FROM contacts WHERE email=?) OR notes LIKE ?`).all(agent.email || '', `%${agent.name}%`);
@@ -161,14 +162,14 @@ router.post('/', (req: AuthRequest, res: Response) => {
   db.prepare(`INSERT INTO agents (id,name,agency_name,type,country,city,phone,email,website,specialization,tier,status,assigned_to,property_id,notes,created_by,created_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     id, name, agency_name||'', type||'Travel Agent', country||'', city||'', phone||'', email||'', website||'', specialization||'', tier||'B', status||'Active',
-    assigned_to || req.user!.id, property_id||null, notes||'', req.user!.id, now
+    req.user!.role === 'executive' ? req.user!.id : (assigned_to || req.user!.id), property_id||null, notes||'', req.user!.id, now
   );
   // Set up followup cadence
   const freq = frequency || 'Monthly';
   const freqDays = FREQUENCY_DAYS[freq] || 30;
   const fid = uuidv4();
   db.prepare('INSERT INTO agent_followups (id,agent_id,user_id,frequency,frequency_days,created_at) VALUES (?,?,?,?,?,?)').run(
-    fid, id, assigned_to || req.user!.id, freq, freqDays, now
+    fid, id, req.user!.role === 'executive' ? req.user!.id : (assigned_to || req.user!.id), freq, freqDays, now
   );
   const agent = db.prepare('SELECT * FROM agents WHERE id=?').get(id) as any;
   const followup = db.prepare('SELECT * FROM agent_followups WHERE agent_id=?').get(id) as any;
@@ -179,11 +180,13 @@ router.post('/', (req: AuthRequest, res: Response) => {
 router.put('/:id', (req: AuthRequest, res: Response) => {
   const agent = db.prepare('SELECT * FROM agents WHERE id=?').get(req.params.id) as any;
   if (!agent) return res.status(404).json({ error: 'Not found' });
+  if (denyUnlessOwner(req, res, agent.assigned_to)) return;
   const { name, agency_name, type, country, city, phone, email, website, specialization, tier, status, assigned_to, property_id, notes, frequency } = req.body;
+  const assignee = req.user!.role === 'executive' ? req.user!.id : (assigned_to ?? agent.assigned_to);
   db.prepare(`UPDATE agents SET name=?,agency_name=?,type=?,country=?,city=?,phone=?,email=?,website=?,specialization=?,tier=?,status=?,assigned_to=?,property_id=?,notes=? WHERE id=?`).run(
     name??agent.name, agency_name??agent.agency_name, type??agent.type, country??agent.country, city??agent.city,
     phone??agent.phone, email??agent.email, website??agent.website, specialization??agent.specialization,
-    tier??agent.tier, status??agent.status, assigned_to??agent.assigned_to, property_id??agent.property_id,
+    tier??agent.tier, status??agent.status, assignee, property_id??agent.property_id,
     notes??agent.notes, req.params.id
   );
   // Update cadence if frequency changed
@@ -212,6 +215,9 @@ router.put('/:id', (req: AuthRequest, res: Response) => {
 
 // DELETE /api/agents/:id
 router.delete('/:id', (req: AuthRequest, res: Response) => {
+  const agent = db.prepare('SELECT * FROM agents WHERE id=?').get(req.params.id) as any;
+  if (!agent) return res.status(404).json({ error: 'Not found' });
+  if (denyUnlessOwner(req, res, agent.assigned_to)) return;
   db.prepare("UPDATE agents SET status='Deleted' WHERE id=?").run(req.params.id);
   return res.json({ success: true });
 });
@@ -220,6 +226,7 @@ router.delete('/:id', (req: AuthRequest, res: Response) => {
 router.post('/:id/log', (req: AuthRequest, res: Response) => {
   const agent = db.prepare('SELECT * FROM agents WHERE id=?').get(req.params.id) as any;
   if (!agent) return res.status(404).json({ error: 'Agent not found' });
+  if (denyUnlessOwner(req, res, agent.assigned_to)) return;
 
   const { type, outcome, notes, contacted_at } = req.body;
   if (!type) return res.status(400).json({ error: 'type required' });

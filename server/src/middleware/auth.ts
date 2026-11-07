@@ -36,4 +36,13 @@ export function requireManagerOrAdmin(req: AuthRequest, res: Response, next: Nex
   next();
 }
 
+/** Executives may only touch rows they own. Managers and admins may touch any row. Returns true if the response was already sent. */
+export function denyUnlessOwner(req: AuthRequest, res: Response, ownerId: string | null | undefined): boolean {
+  if (req.user?.role === 'executive' && ownerId !== req.user.id) {
+    res.status(403).json({ error: 'You can only access your own records' });
+    return true;
+  }
+  return false;
+}
+
 export { JWT_SECRET };

@@ -49,7 +49,20 @@ export default function Login() {
               {loading ? 'Signing in…' : 'Sign In'}
             </button>
           </form>
-          <p className="text-xs text-gray-400 mt-4 text-center">Default: admin@hotel.com / admin123</p>
+          <div className="mt-5 space-y-2">
+            <p className="text-xs text-gray-400 text-center">Demo logins</p>
+            {[
+              { label: 'Admin — everyone', email: 'admin@hotel.com', password: 'admin123' },
+              { label: 'Sales manager — whole team', email: 'rahul@hotel.com', password: 'manager123' },
+              { label: 'Sales executive — own data', email: 'priya@hotel.com', password: 'sales123' },
+            ].map(demo => (
+              <button key={demo.email} type="button" onClick={() => { setEmail(demo.email); setPassword(demo.password); }}
+                className="w-full text-left text-xs border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50">
+                <span className="font-medium text-gray-700">{demo.label}</span>
+                <span className="block text-gray-400">{demo.email} / {demo.password}</span>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </div>

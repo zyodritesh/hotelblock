@@ -133,7 +133,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium truncate">{user?.name}</p>
-            <p className="text-xs text-gray-400 capitalize">{user?.role}</p>
+            <p className="text-xs text-gray-400 capitalize">{user?.role === 'executive' ? 'Executive · own data' : user?.role === 'manager' ? 'Manager · full team' : 'Admin · full access'}</p>
           </div>
         </div>
         <button onClick={handleLogout} className="w-full text-left text-sm text-gray-400 hover:text-white px-2 py-1 rounded hover:bg-gray-800 transition-colors">

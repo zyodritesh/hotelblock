@@ -4,7 +4,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import db from '../db';
-import { authenticate, AuthRequest } from '../middleware/auth';
+import { authenticate, denyUnlessOwner, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 router.use(authenticate);
@@ -59,6 +59,7 @@ router.get('/:id', (req: AuthRequest, res: Response) => {
     LEFT JOIN properties pr ON p.property_id=pr.id
     WHERE p.id=?`).get(req.params.id);
   if (!p) return res.status(404).json({ error: 'Not found' });
+  if (denyUnlessOwner(req, res, (p as any).user_id)) return;
   return res.json(p);
 });
 

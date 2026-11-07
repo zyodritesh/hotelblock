@@ -8,6 +8,12 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/', (req: AuthRequest, res: Response) => {
+  if (req.user!.role === 'executive') {
+    return res.json(db.prepare('SELECT id, name, email, role, active, created_at FROM users WHERE id=?').all(req.user!.id));
+  }
+  if (req.user!.role === 'manager') {
+    return res.json(db.prepare("SELECT id, name, email, role, active, created_at FROM users WHERE active=1 AND role IN ('executive','manager') ORDER BY name").all());
+  }
   const users = db.prepare('SELECT id, name, email, role, active, created_at FROM users ORDER BY name').all();
   return res.json(users);
 });

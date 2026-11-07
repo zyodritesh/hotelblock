@@ -25,7 +25,9 @@ router.get('/dashboard', (req: AuthRequest, res: Response) => {
   const recentCalls = db.prepare(`SELECT c.*, u.name as user_name FROM calls c LEFT JOIN users u ON c.user_id=u.id ${role==='executive'?'WHERE c.user_id=?':''} ORDER BY c.created_at DESC LIMIT 5`).all(...(role==='executive'?[userId]:[]));
   const upcomingTasks = db.prepare(`SELECT t.*, u.name as user_name FROM tasks t LEFT JOIN users u ON t.user_id=u.id WHERE t.completed=0 ${role==='executive'?`AND t.user_id='${userId}'`:''} ORDER BY t.due_date ASC LIMIT 10`).all();
 
-  const todayAttendance = db.prepare(`SELECT a.*, u.name as user_name FROM attendance a LEFT JOIN users u ON a.user_id=u.id WHERE a.date=?`).all(today);
+  const todayAttendance = role === 'executive'
+    ? db.prepare(`SELECT a.*, u.name as user_name FROM attendance a LEFT JOIN users u ON a.user_id=u.id WHERE a.date=? AND a.user_id=?`).all(today, userId)
+    : db.prepare(`SELECT a.*, u.name as user_name FROM attendance a LEFT JOIN users u ON a.user_id=u.id WHERE a.date=?`).all(today);
 
   return res.json({ callsToday, callsWeek, openLeads, pipelineValue, closedRevenueMTD, meetingsToday, pipelineByStage, pipelineBySegment, recentCalls, upcomingTasks, todayAttendance });
 });
@@ -48,9 +50,13 @@ router.get('/revenue', (req: AuthRequest, res: Response) => {
   return res.json({ monthly });
 });
 
-router.get('/leaderboard', (_req: AuthRequest, res: Response) => {
+router.get('/leaderboard', (req: AuthRequest, res: Response) => {
   const month = new Date().toISOString().slice(0, 7);
-  const users = db.prepare('SELECT id, name, role FROM users WHERE active=1').all() as any[];
+  const users = (req.user!.role === 'executive'
+    ? db.prepare('SELECT id, name, role FROM users WHERE id=?').all(req.user!.id)
+    : req.user!.role === 'manager'
+      ? db.prepare("SELECT id, name, role FROM users WHERE active=1 AND role IN ('executive','manager')").all()
+      : db.prepare('SELECT id, name, role FROM users WHERE active=1').all()) as any[];
   const leaderboard = users.map((u: any) => {
     const monthStart = `${month}-01`, monthEnd = `${month}-31`;
     const calls = (db.prepare(`SELECT COUNT(*) as c FROM calls WHERE user_id=? AND date(created_at) BETWEEN ? AND ?`).get(u.id, monthStart, monthEnd) as any).c;
@@ -66,7 +72,11 @@ router.get('/leaderboard', (_req: AuthRequest, res: Response) => {
 router.get('/attendance-summary', (req: AuthRequest, res: Response) => {
   const { month } = req.query as Record<string, string>;
   const m = month || new Date().toISOString().slice(0, 7);
-  let q = `SELECT a.user_id, u.name, COUNT(*) as total_days, SUM(a.is_late) as late_days FROM attendance a LEFT JOIN users u ON a.user_id=u.id WHERE a.date LIKE ? GROUP BY a.user_id`;
+  if (req.user!.role === 'executive') {
+    const q = `SELECT a.user_id, u.name, COUNT(*) as total_days, SUM(a.is_late) as late_days FROM attendance a LEFT JOIN users u ON a.user_id=u.id WHERE a.date LIKE ? AND a.user_id=? GROUP BY a.user_id`;
+    return res.json(db.prepare(q).all(`${m}%`, req.user!.id));
+  }
+  const q = `SELECT a.user_id, u.name, COUNT(*) as total_days, SUM(a.is_late) as late_days FROM attendance a LEFT JOIN users u ON a.user_id=u.id WHERE a.date LIKE ? GROUP BY a.user_id`;
   return res.json(db.prepare(q).all(`${m}%`));
 });
 
