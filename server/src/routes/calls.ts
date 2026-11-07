@@ -7,19 +7,19 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/', (req: AuthRequest, res: Response) => {
-  const { user_id, segment, outcome, from, to, limit = '100', offset = '0' } = req.query as Record<string, string>;
-  let q = `SELECT c.*, u.name as user_name FROM calls c LEFT JOIN users u ON c.user_id = u.id WHERE 1=1`;
+  const { user_id, segment, outcome, from, to, search, limit = '50', offset = '0' } = req.query as Record<string, string>;
+  let base = `FROM calls c LEFT JOIN users u ON c.user_id = u.id WHERE 1=1`;
   const params: any[] = [];
-  if (req.user!.role === 'executive') { q += ' AND c.user_id = ?'; params.push(req.user!.id); }
-  else if (user_id) { q += ' AND c.user_id = ?'; params.push(user_id); }
-  if (segment) { q += ' AND c.segment = ?'; params.push(segment); }
-  if (outcome) { q += ' AND c.outcome = ?'; params.push(outcome); }
-  if (from) { q += ' AND date(c.created_at) >= ?'; params.push(from); }
-  if (to) { q += ' AND date(c.created_at) <= ?'; params.push(to); }
-  q += ' ORDER BY c.created_at DESC LIMIT ? OFFSET ?';
-  params.push(parseInt(limit), parseInt(offset));
-  const rows = db.prepare(q).all(...params);
-  return res.json(rows);
+  if (req.user!.role === 'executive') { base += ' AND c.user_id = ?'; params.push(req.user!.id); }
+  else if (user_id) { base += ' AND c.user_id = ?'; params.push(user_id); }
+  if (segment) { base += ' AND c.segment = ?'; params.push(segment); }
+  if (outcome) { base += ' AND c.outcome = ?'; params.push(outcome); }
+  if (from) { base += ' AND date(c.created_at) >= ?'; params.push(from); }
+  if (to) { base += ' AND date(c.created_at) <= ?'; params.push(to); }
+  if (search) { base += ' AND (c.contact_name LIKE ? OR c.company LIKE ? OR c.phone LIKE ?)'; const s = `%${search}%`; params.push(s, s, s); }
+  const total = (db.prepare(`SELECT COUNT(*) as c ${base}`).get(...params) as any).c;
+  const rows = db.prepare(`SELECT c.*, u.name as user_name ${base} ORDER BY c.created_at DESC LIMIT ? OFFSET ?`).all(...params, parseInt(limit), parseInt(offset));
+  return res.json({ data: rows, total });
 });
 
 router.post('/', (req: AuthRequest, res: Response) => {

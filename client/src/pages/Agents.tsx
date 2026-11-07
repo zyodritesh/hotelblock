@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuthStore } from '../store/auth';
+import Pagination from '../components/Pagination';
 import {
   AGENT_TYPES, AGENT_SPECIALIZATIONS, AGENT_TIERS, AGENT_STATUSES,
   FOLLOW_UP_FREQUENCIES, ACTIVITY_TYPES, ACTIVITY_OUTCOMES,
-  TIER_CONFIG, DUE_STATUS_CONFIG, formatDate, formatDateTime
+  TIER_CONFIG, DUE_STATUS_CONFIG, formatDate, formatDateTime, exportCSV
 } from '../lib/utils';
 
 const API = '/api';
@@ -33,6 +34,9 @@ const BLANK_AGENT = {
 export default function Agents() {
   const { token, user, activePropertyId, isAdmin, isManager } = useAuthStore();
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -68,12 +72,16 @@ export default function Agents() {
       if (filterDue) params.set('due_status', filterDue);
       if (filterCountry) params.set('country', filterCountry);
       if (activePropertyId) params.set('property_id', activePropertyId);
+      params.set('limit', String(pageSize));
+      params.set('offset', String((page - 1) * pageSize));
       const res = await fetch(`${API}/agents?${params}`, { headers: headers() });
       const data = await res.json();
-      setAgents(Array.isArray(data) ? data : []);
+      setAgents(Array.isArray(data) ? data : (data.data || []));
+      setTotal(data.total ?? (Array.isArray(data) ? data.length : 0));
     } finally { setLoading(false); }
-  }, [search, filterType, filterTier, filterStatus, filterDue, filterCountry, activePropertyId, headers]);
+  }, [search, filterType, filterTier, filterStatus, filterDue, filterCountry, activePropertyId, headers, page, pageSize]);
 
+  useEffect(() => { setPage(1); }, [search, filterType, filterTier, filterStatus, filterDue, filterCountry, pageSize]);
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
@@ -158,9 +166,32 @@ export default function Agents() {
           <h1 className="text-2xl font-bold text-gray-900">Agent Network</h1>
           <p className="text-gray-500 text-sm mt-1">Global travel agents, DMCs, OTAs, MICE & corporate partners</p>
         </div>
-        <button onClick={openCreate} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700 flex items-center gap-2">
-          + Add Agent
-        </button>
+        <div className="flex gap-2">
+          <button onClick={async () => {
+            const params = new URLSearchParams();
+            if (search) params.set('search', search);
+            if (filterType) params.set('type', filterType);
+            if (filterTier) params.set('tier', filterTier);
+            if (filterStatus) params.set('status', filterStatus);
+            if (filterCountry) params.set('country', filterCountry);
+            params.set('limit', '5000'); params.set('offset', '0');
+            const res = await fetch(`${API}/agents?${params}`, { headers: headers() });
+            const data = await res.json();
+            const rows = Array.isArray(data) ? data : (data.data || []);
+            exportCSV('agents', rows, [
+              { key: 'name', label: 'Name' }, { key: 'agency_name', label: 'Agency' },
+              { key: 'type', label: 'Type' }, { key: 'city', label: 'City' },
+              { key: 'country', label: 'Country' }, { key: 'phone', label: 'Phone' },
+              { key: 'email', label: 'Email' }, { key: 'tier', label: 'Tier' },
+              { key: 'frequency', label: 'Frequency' }, { key: 'last_contact_date', label: 'Last Contact' },
+              { key: 'next_due_date', label: 'Next Due' }, { key: 'due_status', label: 'Status' },
+              { key: 'assigned_name', label: 'Assigned To' },
+            ]);
+          }} className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg font-semibold hover:bg-gray-50">⬇ Export</button>
+          <button onClick={openCreate} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700 flex items-center gap-2">
+            + Add Agent
+          </button>
+        </div>
       </div>
 
       {/* Stats bar */}
@@ -172,7 +203,7 @@ export default function Agents() {
           { label: 'Never Contacted', value: agents.filter(a => a.due_status === 'Never Contacted').length, color: 'text-gray-500' },
         ].map(s => (
           <div key={s.label} className="bg-white rounded-xl border border-gray-200 p-4">
-            <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
+            <div className={`text-2xl font-bold ${s.color}`}>{s.label === 'Total Agents' ? total : s.value}</div>
             <div className="text-xs text-gray-500 mt-1">{s.label}</div>
           </div>
         ))}
@@ -188,7 +219,7 @@ export default function Agents() {
           </select>
           <select className="border border-gray-300 rounded-lg px-3 py-2 text-sm" value={filterTier} onChange={e => setFilterTier(e.target.value)}>
             <option value="">All Tiers</option>
-            {AGENT_TIERS.map(t => <option key={t}>Tier {t}</option>)}
+            {AGENT_TIERS.map(t => <option key={t} value={t}>Tier {t}</option>)}
           </select>
           <select className="border border-gray-300 rounded-lg px-3 py-2 text-sm" value={filterDue} onChange={e => setFilterDue(e.target.value)}>
             <option value="">All Follow-up Status</option>
@@ -273,6 +304,9 @@ export default function Agents() {
               })}
             </tbody>
           </table>
+        </div>
+        <div className="px-4 pb-4">
+          <Pagination page={page} pageSize={pageSize} total={total} onPage={setPage} onPageSize={ps => { setPageSize(ps); setPage(1); }} />
         </div>
       </div>
 

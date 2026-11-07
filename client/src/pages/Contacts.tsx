@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { api } from '../api/client';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { formatDate } from '../lib/utils';
+import Pagination from '../components/Pagination';
+import { formatDate, exportCSV } from '../lib/utils';
 
 interface Contact {
   id: string; account_id: string; account_name: string; name: string; title: string;
@@ -19,15 +20,38 @@ export default function Contacts() {
   const [showModal, setShowModal] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const load = () => {
-    api.get<Contact[]>(`/contacts${search ? `?search=${encodeURIComponent(search)}` : ''}`).then(setContacts);
-  };
+  const load = useCallback(async (p = page, ps = pageSize) => {
+    const q = new URLSearchParams();
+    if (search) q.set('search', search);
+    q.set('limit', String(ps));
+    q.set('offset', String((p - 1) * ps));
+    const res = await api.get<any>(`/contacts?${q}`);
+    setContacts(res.data ?? res);
+    setTotal(res.total ?? 0);
+  }, [search, page, pageSize]);
 
-  useEffect(() => { load(); }, [search]);
-  useEffect(() => { api.get<any[]>('/accounts').then(setAccounts); }, []);
+  useEffect(() => { setPage(1); }, [search, pageSize]);
+  useEffect(() => { load(page, pageSize); }, [page, pageSize, search]);
+  useEffect(() => { api.get<any>('/accounts?limit=500').then(r => setAccounts(r.data ?? r)); }, []);
+
+  const handleExport = async () => {
+    const q = new URLSearchParams();
+    if (search) q.set('search', search);
+    q.set('limit', '5000'); q.set('offset', '0');
+    const res = await api.get<any>(`/contacts?${q}`);
+    exportCSV('contacts', res.data ?? res, [
+      { key: 'name', label: 'Name' }, { key: 'title', label: 'Title' },
+      { key: 'account_name', label: 'Account' }, { key: 'phone', label: 'Phone' },
+      { key: 'email', label: 'Email' }, { key: 'notes', label: 'Notes' },
+      { key: 'created_at', label: 'Added' },
+    ]);
+  };
 
   const openCreate = () => { setEditing(null); setForm({ ...EMPTY }); setShowModal(true); };
   const openEdit = (c: Contact) => { setEditing(c); setForm({ account_id: c.account_id || '', name: c.name, title: c.title, phone: c.phone, email: c.email, notes: c.notes }); setShowModal(true); };
@@ -37,7 +61,7 @@ export default function Contacts() {
     try {
       if (editing) await api.put(`/contacts/${editing.id}`, form);
       else await api.post('/contacts', form);
-      setShowModal(false); load();
+      setShowModal(false); load(page, pageSize);
     } catch (err: any) { setError(err.message); } finally { setLoading(false); }
   };
 
@@ -45,10 +69,14 @@ export default function Contacts() {
     <div className="space-y-6">
       <div className="page-header">
         <h1 className="page-title">👥 Contacts</h1>
-        <button className="btn-primary" onClick={openCreate}>+ Add Contact</button>
+        <div className="flex gap-2">
+          <button className="btn-secondary text-sm px-3 py-2" onClick={handleExport}>⬇ Export</button>
+          <button className="btn-primary" onClick={openCreate}>+ Add Contact</button>
+        </div>
       </div>
-      <div className="card">
-        <input className="input max-w-sm" placeholder="Search by name, email, phone…" value={search} onChange={e => setSearch(e.target.value)} />
+      <div className="card flex items-center gap-3">
+        <input className="input max-w-sm" placeholder="Search by name, email, phone, title…" value={search} onChange={e => setSearch(e.target.value)} />
+        <span className="text-sm text-gray-400">{total} contacts</span>
       </div>
       <div className="card overflow-x-auto">
         <table className="w-full text-sm">
@@ -81,6 +109,7 @@ export default function Contacts() {
             {contacts.length === 0 && <tr><td colSpan={7} className="py-12 text-center text-gray-400">No contacts found.</td></tr>}
           </tbody>
         </table>
+        <Pagination page={page} pageSize={pageSize} total={total} onPage={setPage} onPageSize={ps => { setPageSize(ps); setPage(1); }} />
       </div>
 
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? 'Edit Contact' : 'Add Contact'}>
@@ -103,7 +132,7 @@ export default function Contacts() {
           </div>
         </form>
       </Modal>
-      <ConfirmDialog open={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={async () => { await api.del(`/contacts/${deleteId}`); load(); }} title="Delete Contact" message="Delete this contact?" confirmLabel="Delete" danger />
+      <ConfirmDialog open={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={async () => { await api.del(`/contacts/${deleteId}`); load(page, pageSize); }} title="Delete Contact" message="Delete this contact?" confirmLabel="Delete" danger />
     </div>
   );
 }

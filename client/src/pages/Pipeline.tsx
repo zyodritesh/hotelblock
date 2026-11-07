@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { api } from '../api/client';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { formatCurrency, formatDate, SEGMENTS, PIPELINE_STAGES, SEGMENT_COLORS, STAGE_COLORS, cn } from '../lib/utils';
+import Pagination from '../components/Pagination';
+import { formatCurrency, formatDate, SEGMENTS, PIPELINE_STAGES, SEGMENT_COLORS, STAGE_COLORS, cn, exportCSV } from '../lib/utils';
 import { useAuthStore } from '../store/auth';
 
 interface Lead {
@@ -17,12 +18,16 @@ const EMPTY_FORM = { title: '', segment: 'Rooms', stage: 'Prospect', estimated_r
 export default function Pipeline() {
   const { isManager } = useAuthStore();
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [search, setSearch] = useState('');
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [editing, setEditing] = useState<Lead | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'kanban' | 'table'>('kanban');
-  const [filters, setFilters] = useState({ segment: '', user_id: '' });
+  const [filters, setFilters] = useState({ segment: '', stage: '', user_id: '' });
   const [users, setUsers] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
@@ -30,18 +35,27 @@ export default function Pipeline() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const loadLeads = async () => {
-    const p = new URLSearchParams();
-    if (filters.segment) p.append('segment', filters.segment);
-    if (filters.user_id) p.append('user_id', filters.user_id);
-    const data = await api.get<Lead[]>(`/leads?${p.toString()}`);
-    setLeads(data);
-  };
+  const loadLeads = useCallback(async (p = page, ps = pageSize) => {
+    setLoading(true);
+    try {
+      const q = new URLSearchParams();
+      if (filters.segment) q.append('segment', filters.segment);
+      if (filters.stage) q.append('stage', filters.stage);
+      if (filters.user_id) q.append('user_id', filters.user_id);
+      if (search) q.append('search', search);
+      q.append('limit', String(viewMode === 'kanban' ? 500 : ps));
+      q.append('offset', String(viewMode === 'kanban' ? 0 : (p - 1) * ps));
+      const res = await api.get<any>(`/leads?${q}`);
+      setLeads(res.data ?? res);
+      setTotal(res.total ?? res.length ?? 0);
+    } finally { setLoading(false); }
+  }, [filters, search, page, pageSize, viewMode]);
 
-  useEffect(() => { loadLeads(); }, [filters]);
+  useEffect(() => { setPage(1); }, [filters, search, pageSize, viewMode]);
+  useEffect(() => { loadLeads(page, pageSize); }, [page, pageSize, filters, search, viewMode]);
   useEffect(() => {
-    api.get<any[]>('/accounts').then(setAccounts);
-    api.get<any[]>('/contacts').then(setContacts);
+    api.get<any>('/accounts?limit=500').then(r => setAccounts(r.data ?? r));
+    api.get<any>('/contacts?limit=500').then(r => setContacts(r.data ?? r));
     if (isManager()) api.get<any[]>('/users').then(setUsers);
   }, []);
 
@@ -57,8 +71,27 @@ export default function Pipeline() {
     try {
       if (editing) await api.put(`/leads/${editing.id}`, form);
       else await api.post('/leads', form);
-      setShowModal(false); loadLeads();
+      setShowModal(false); loadLeads(page, pageSize);
     } catch (err: any) { setError(err.message); } finally { setLoading(false); }
+  };
+
+  const handleExport = async () => {
+    const q = new URLSearchParams();
+    if (filters.segment) q.append('segment', filters.segment);
+    if (filters.stage) q.append('stage', filters.stage);
+    if (filters.user_id) q.append('user_id', filters.user_id);
+    if (search) q.append('search', search);
+    q.append('limit', '5000'); q.append('offset', '0');
+    const res = await api.get<any>(`/leads?${q}`);
+    const rows = res.data ?? res;
+    exportCSV('pipeline', rows, [
+      { key: 'title', label: 'Lead Title' }, { key: 'segment', label: 'Segment' },
+      { key: 'stage', label: 'Stage' }, { key: 'estimated_revenue', label: 'Revenue (₹)' },
+      { key: 'event_date', label: 'Event Date' }, { key: 'pax', label: 'Pax' },
+      { key: 'room_nights', label: 'Room Nights' }, { key: 'account_name', label: 'Account' },
+      { key: 'contact_name', label: 'Contact' }, { key: 'user_name', label: 'Owner' },
+      { key: 'notes', label: 'Notes' }, { key: 'updated_at', label: 'Updated' },
+    ]);
   };
 
   const moveStage = async (id: string, stage: string) => {
@@ -80,6 +113,7 @@ export default function Pipeline() {
           <p className="text-xs text-gray-400 mt-0.5">{leads.length} leads · {formatCurrency(leads.reduce((s, l) => s + l.estimated_revenue, 0))}</p>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={handleExport} className="btn-secondary text-sm px-3 py-2 hidden sm:flex items-center gap-1">⬇ Export</button>
           <div className="hidden sm:flex border border-gray-200 rounded-lg overflow-hidden">
             <button className={cn('px-3 py-1.5 text-sm', viewMode === 'kanban' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50')} onClick={() => setViewMode('kanban')}>Kanban</button>
             <button className={cn('px-3 py-1.5 text-sm', viewMode === 'table' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50')} onClick={() => setViewMode('table')}>Table</button>
@@ -89,10 +123,15 @@ export default function Pipeline() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-2 overflow-x-auto pb-1">
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+        <input type="text" placeholder="🔍 Search leads…" className="input flex-shrink-0 text-xs py-1.5 w-44" value={search} onChange={e => setSearch(e.target.value)} />
         <select className="select flex-shrink-0 text-xs w-28 py-1.5" value={filters.segment} onChange={e => setFilters(f => ({ ...f, segment: e.target.value }))}>
           <option value="">All Segments</option>
           {SEGMENTS.map(s => <option key={s}>{s}</option>)}
+        </select>
+        <select className="select flex-shrink-0 text-xs w-36 py-1.5" value={filters.stage} onChange={e => setFilters(f => ({ ...f, stage: e.target.value }))}>
+          <option value="">All Stages</option>
+          {PIPELINE_STAGES.map(s => <option key={s}>{s}</option>)}
         </select>
         {isManager() && (
           <select className="select flex-shrink-0 text-xs w-36 py-1.5" value={filters.user_id} onChange={e => setFilters(f => ({ ...f, user_id: e.target.value }))}>
@@ -100,11 +139,15 @@ export default function Pipeline() {
             {users.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
         )}
+        {(search || Object.values(filters).some(v => v)) && (
+          <button className="btn-ghost text-xs flex-shrink-0 px-3 py-1.5" onClick={() => { setSearch(''); setFilters({ segment: '', stage: '', user_id: '' }); }}>✕ Clear</button>
+        )}
+        <button onClick={handleExport} className="btn-ghost text-xs flex-shrink-0 px-3 py-1.5 sm:hidden">⬇ Export</button>
       </div>
 
       {/* Mobile card list — shown on small screens regardless of viewMode */}
       <div className="sm:hidden space-y-2">
-        {leads.length === 0 && (
+        {!loading && leads.length === 0 && (
           <div className="bg-white rounded-xl border border-gray-200 py-12 text-center text-gray-400">No leads found.</div>
         )}
         {leads.map(lead => (
@@ -131,6 +174,7 @@ export default function Pipeline() {
             </div>
           </div>
         ))}
+        {viewMode === 'table' && <Pagination page={page} pageSize={pageSize} total={total} onPage={setPage} onPageSize={ps => { setPageSize(ps); setPage(1); }} />}
       </div>
 
       {/* Desktop: Kanban or Table */}
@@ -212,9 +256,10 @@ export default function Pipeline() {
                   </td>
                 </tr>
               ))}
-              {leads.length === 0 && <tr><td colSpan={7} className="py-12 text-center text-gray-400">No leads found.</td></tr>}
+              {leads.length === 0 && !loading && <tr><td colSpan={7} className="py-12 text-center text-gray-400">No leads found.</td></tr>}
             </tbody>
           </table>
+          <Pagination page={page} pageSize={pageSize} total={total} onPage={setPage} onPageSize={ps => { setPageSize(ps); setPage(1); }} />
         </div>
       )}
 

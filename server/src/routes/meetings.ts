@@ -19,16 +19,18 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/', (req: AuthRequest, res: Response) => {
-  const { user_id, segment, from, to } = req.query as Record<string, string>;
-  let q = `SELECT m.*, u.name as user_name FROM meetings m LEFT JOIN users u ON m.user_id = u.id WHERE 1=1`;
+  const { user_id, segment, from, to, search, limit = '50', offset = '0' } = req.query as Record<string, string>;
+  let base = `FROM meetings m LEFT JOIN users u ON m.user_id = u.id WHERE 1=1`;
   const params: any[] = [];
-  if (req.user!.role === 'executive') { q += ' AND m.user_id = ?'; params.push(req.user!.id); }
-  else if (user_id) { q += ' AND m.user_id = ?'; params.push(user_id); }
-  if (segment) { q += ' AND m.segment = ?'; params.push(segment); }
-  if (from) { q += ' AND date(m.meeting_date) >= ?'; params.push(from); }
-  if (to) { q += ' AND date(m.meeting_date) <= ?'; params.push(to); }
-  q += ' ORDER BY m.meeting_date DESC';
-  return res.json(db.prepare(q).all(...params));
+  if (req.user!.role === 'executive') { base += ' AND m.user_id = ?'; params.push(req.user!.id); }
+  else if (user_id) { base += ' AND m.user_id = ?'; params.push(user_id); }
+  if (segment) { base += ' AND m.segment = ?'; params.push(segment); }
+  if (from) { base += ' AND date(m.meeting_date) >= ?'; params.push(from); }
+  if (to) { base += ' AND date(m.meeting_date) <= ?'; params.push(to); }
+  if (search) { base += ' AND (m.contact_name LIKE ? OR m.company LIKE ?)'; const s = `%${search}%`; params.push(s, s); }
+  const total = (db.prepare(`SELECT COUNT(*) as c ${base}`).get(...params) as any).c;
+  const rows = db.prepare(`SELECT m.*, u.name as user_name ${base} ORDER BY m.meeting_date DESC LIMIT ? OFFSET ?`).all(...params, parseInt(limit), parseInt(offset));
+  return res.json({ data: rows, total });
 });
 
 router.post('/', upload.single('photo'), (req: AuthRequest, res: Response) => {

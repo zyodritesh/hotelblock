@@ -6,9 +6,15 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 const router = Router();
 router.use(authenticate);
 
-router.get('/', (_req: AuthRequest, res: Response) => {
-  const rows = db.prepare(`SELECT a.*, COUNT(c.id) as contact_count FROM accounts a LEFT JOIN contacts c ON c.account_id = a.id GROUP BY a.id ORDER BY a.name`).all();
-  return res.json(rows);
+router.get('/', (req: AuthRequest, res: Response) => {
+  const { search, type, limit = '50', offset = '0' } = req.query as Record<string, string>;
+  let base = `FROM accounts a LEFT JOIN contacts c ON c.account_id = a.id WHERE 1=1`;
+  const params: any[] = [];
+  if (search) { base += ' AND (a.name LIKE ? OR a.type LIKE ? OR a.address LIKE ?)'; const s = `%${search}%`; params.push(s, s, s); }
+  if (type) { base += ' AND a.type = ?'; params.push(type); }
+  const total = (db.prepare(`SELECT COUNT(DISTINCT a.id) as c ${base}`).get(...params) as any).c;
+  const rows = db.prepare(`SELECT a.*, COUNT(c.id) as contact_count ${base} GROUP BY a.id ORDER BY a.name LIMIT ? OFFSET ?`).all(...params, parseInt(limit), parseInt(offset));
+  return res.json({ data: rows, total });
 });
 
 router.get('/:id', (req: AuthRequest, res: Response) => {

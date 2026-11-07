@@ -1,8 +1,9 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { api } from '../api/client';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { formatDateTime, formatDate, SEGMENTS, MEETING_PURPOSES, SEGMENT_COLORS, cn } from '../lib/utils';
+import Pagination from '../components/Pagination';
+import { formatDateTime, formatDate, SEGMENTS, MEETING_PURPOSES, SEGMENT_COLORS, cn, exportCSV } from '../lib/utils';
 import { useAuthStore } from '../store/auth';
 
 interface Meeting {
@@ -16,6 +17,10 @@ const EMPTY_FORM = { contact_name: '', company: '', segment: 'Corporate', purpos
 export default function Meetings() {
   const { isManager } = useAuthStore();
   const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [search, setSearch] = useState('');
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [editing, setEditing] = useState<Meeting | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -26,20 +31,29 @@ export default function Meetings() {
   const [gps, setGps] = useState<{ lat: number; lng: number } | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState({ segment: '', user_id: '' });
+  const [filters, setFilters] = useState({ segment: '', user_id: '', from: '', to: '' });
   const [users, setUsers] = useState<any[]>([]);
   const [viewMeeting, setViewMeeting] = useState<Meeting | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const loadMeetings = async () => {
-    const p = new URLSearchParams();
-    if (filters.segment) p.append('segment', filters.segment);
-    if (filters.user_id) p.append('user_id', filters.user_id);
-    const data = await api.get<Meeting[]>(`/meetings?${p.toString()}`);
-    setMeetings(data);
-  };
+  const loadMeetings = useCallback(async (p = page, ps = pageSize) => {
+    setLoading(true);
+    try {
+      const q = new URLSearchParams();
+      if (filters.segment) q.append('segment', filters.segment);
+      if (filters.user_id) q.append('user_id', filters.user_id);
+      if (filters.from) q.append('from', filters.from);
+      if (filters.to) q.append('to', filters.to);
+      if (search) q.append('search', search);
+      q.append('limit', String(ps)); q.append('offset', String((p - 1) * ps));
+      const res = await api.get<any>(`/meetings?${q}`);
+      setMeetings(res.data ?? res);
+      setTotal(res.total ?? res.length ?? 0);
+    } finally { setLoading(false); }
+  }, [filters, search, page, pageSize]);
 
-  useEffect(() => { loadMeetings(); }, [filters]);
+  useEffect(() => { setPage(1); }, [filters, search, pageSize]);
+  useEffect(() => { loadMeetings(page, pageSize); }, [page, pageSize, filters, search]);
   useEffect(() => { if (isManager()) api.get<any[]>('/users').then(setUsers); }, []);
 
   const openCreate = () => {
@@ -73,32 +87,64 @@ export default function Meetings() {
       if (photoFile) fd.append('photo', photoFile);
       if (editing) await api.putForm(`/meetings/${editing.id}`, fd);
       else await api.postForm('/meetings', fd);
-      setShowModal(false); loadMeetings();
+      setShowModal(false); loadMeetings(page, pageSize);
     } catch (err: any) { setError(err.message); } finally { setLoading(false); }
   };
 
-  const handleDelete = async (id: string) => { await api.del(`/meetings/${id}`); loadMeetings(); };
+  const handleDelete = async (id: string) => { await api.del(`/meetings/${id}`); loadMeetings(page, pageSize); };
+
+  const handleExport = async () => {
+    const q = new URLSearchParams();
+    if (filters.segment) q.append('segment', filters.segment);
+    if (filters.user_id) q.append('user_id', filters.user_id);
+    if (filters.from) q.append('from', filters.from);
+    if (filters.to) q.append('to', filters.to);
+    if (search) q.append('search', search);
+    q.append('limit', '5000'); q.append('offset', '0');
+    const res = await api.get<any>(`/meetings?${q}`);
+    exportCSV('meetings', res.data ?? res, [
+      { key: 'meeting_date', label: 'Date' }, { key: 'contact_name', label: 'Contact' },
+      { key: 'company', label: 'Company' }, { key: 'segment', label: 'Segment' },
+      { key: 'purpose', label: 'Purpose' }, { key: 'outcome', label: 'Outcome' },
+      { key: 'address_label', label: 'Address' }, { key: 'notes', label: 'Notes' },
+      { key: 'user_name', label: 'By' },
+    ]);
+  };
 
   return (
-    <div className="space-y-6">
-      <div className="page-header">
-        <h1 className="page-title">🤝 Physical Meetings</h1>
-        <button className="btn-primary" onClick={openCreate}>+ Log Meeting</button>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">🤝 Meetings</h1>
+          <p className="text-xs text-gray-400 mt-0.5">{total.toLocaleString()} meetings</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={handleExport} className="btn-secondary text-sm px-3 py-2 hidden sm:flex items-center gap-1">⬇ Export</button>
+          <button className="btn-primary text-sm px-3 py-2" onClick={openCreate}>+ Log Meeting</button>
+        </div>
       </div>
 
       {/* Filters */}
-      <div className="card flex flex-wrap gap-3">
-        <select className="select w-36" value={filters.segment} onChange={e => setFilters(f => ({ ...f, segment: e.target.value }))}>
-          <option value="">All Segments</option>
-          {SEGMENTS.map(s => <option key={s}>{s}</option>)}
-        </select>
-        {isManager() && (
-          <select className="select w-44" value={filters.user_id} onChange={e => setFilters(f => ({ ...f, user_id: e.target.value }))}>
-            <option value="">All Staff</option>
-            {users.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
+      <div className="bg-white rounded-xl border border-gray-200 p-3">
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          <input type="text" placeholder="🔍 Search contact, company…" className="input flex-shrink-0 text-xs py-1.5 w-48" value={search} onChange={e => setSearch(e.target.value)} />
+          <select className="select flex-shrink-0 text-xs w-28 py-1.5" value={filters.segment} onChange={e => setFilters(f => ({ ...f, segment: e.target.value }))}>
+            <option value="">All Segments</option>
+            {SEGMENTS.map(s => <option key={s}>{s}</option>)}
           </select>
-        )}
-        <button className="btn-ghost text-sm" onClick={() => setFilters({ segment: '', user_id: '' })}>Clear</button>
+          <input type="date" className="input flex-shrink-0 w-32 text-xs py-1.5" value={filters.from} onChange={e => setFilters(f => ({ ...f, from: e.target.value }))} />
+          <input type="date" className="input flex-shrink-0 w-32 text-xs py-1.5" value={filters.to} onChange={e => setFilters(f => ({ ...f, to: e.target.value }))} />
+          {isManager() && (
+            <select className="select flex-shrink-0 text-xs w-36 py-1.5" value={filters.user_id} onChange={e => setFilters(f => ({ ...f, user_id: e.target.value }))}>
+              <option value="">All Staff</option>
+              {users.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          )}
+          {(search || Object.values(filters).some(v => v)) && (
+            <button className="btn-ghost text-xs flex-shrink-0 px-3 py-1.5" onClick={() => { setSearch(''); setFilters({ segment: '', user_id: '', from: '', to: '' }); }}>✕ Clear</button>
+          )}
+          <button onClick={handleExport} className="btn-ghost text-xs flex-shrink-0 px-3 py-1.5 sm:hidden">⬇ Export</button>
+        </div>
       </div>
 
       {/* Grid */}
@@ -138,6 +184,7 @@ export default function Meetings() {
           </div>
         )}
       </div>
+      <Pagination page={page} pageSize={pageSize} total={total} onPage={setPage} onPageSize={ps => { setPageSize(ps); setPage(1); }} />
 
       {/* Log Meeting Modal */}
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? 'Edit Meeting' : 'Log Physical Meeting'} size="lg">

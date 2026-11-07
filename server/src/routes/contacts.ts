@@ -7,13 +7,14 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/', (req: AuthRequest, res: Response) => {
-  const { account_id, search } = req.query as Record<string, string>;
-  let q = 'SELECT c.*, a.name as account_name FROM contacts c LEFT JOIN accounts a ON c.account_id = a.id WHERE 1=1';
+  const { account_id, search, limit = '50', offset = '0' } = req.query as Record<string, string>;
+  let base = 'FROM contacts c LEFT JOIN accounts a ON c.account_id = a.id WHERE 1=1';
   const params: any[] = [];
-  if (account_id) { q += ' AND c.account_id = ?'; params.push(account_id); }
-  if (search) { q += ' AND (c.name LIKE ? OR c.email LIKE ? OR c.phone LIKE ?)'; params.push(`%${search}%`, `%${search}%`, `%${search}%`); }
-  q += ' ORDER BY c.name';
-  return res.json(db.prepare(q).all(...params));
+  if (account_id) { base += ' AND c.account_id = ?'; params.push(account_id); }
+  if (search) { base += ' AND (c.name LIKE ? OR c.email LIKE ? OR c.phone LIKE ? OR c.title LIKE ?)'; const s = `%${search}%`; params.push(s, s, s, s); }
+  const total = (db.prepare(`SELECT COUNT(*) as c ${base}`).get(...params) as any).c;
+  const rows = db.prepare(`SELECT c.*, a.name as account_name ${base} ORDER BY c.name LIMIT ? OFFSET ?`).all(...params, parseInt(limit), parseInt(offset));
+  return res.json({ data: rows, total });
 });
 
 router.get('/:id', (req: AuthRequest, res: Response) => {

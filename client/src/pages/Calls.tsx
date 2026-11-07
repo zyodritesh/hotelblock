@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { api } from '../api/client';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { formatDateTime, formatDate, SEGMENTS, CALL_TYPES, CALL_OUTCOMES, SEGMENT_COLORS, OUTCOME_COLORS, cn } from '../lib/utils';
+import Pagination from '../components/Pagination';
+import { formatDateTime, formatDate, SEGMENTS, CALL_TYPES, CALL_OUTCOMES, SEGMENT_COLORS, OUTCOME_COLORS, cn, exportCSV } from '../lib/utils';
 import { useAuthStore } from '../store/auth';
 
 interface Call {
@@ -15,29 +16,41 @@ interface Call {
 const EMPTY_FORM = { contact_name: '', company: '', phone: '', segment: 'Rooms', call_type: 'Cold Call', duration_min: 0, outcome: 'Interested', notes: '', next_action: '', next_action_date: '' };
 
 export default function Calls() {
-  const { user, isManager } = useAuthStore();
+  const { isManager } = useAuthStore();
   const [calls, setCalls] = useState<Call[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [editing, setEditing] = useState<Call | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({ segment: '', outcome: '', from: '', to: '', user_id: '' });
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const loadCalls = async () => {
-    const p = new URLSearchParams();
-    if (filters.segment) p.append('segment', filters.segment);
-    if (filters.outcome) p.append('outcome', filters.outcome);
-    if (filters.from) p.append('from', filters.from);
-    if (filters.to) p.append('to', filters.to);
-    if (filters.user_id) p.append('user_id', filters.user_id);
-    const data = await api.get<Call[]>(`/calls?${p.toString()}`);
-    setCalls(data);
-  };
+  const loadCalls = useCallback(async (p = page, ps = pageSize) => {
+    setLoading(true);
+    try {
+      const q = new URLSearchParams();
+      if (filters.segment) q.append('segment', filters.segment);
+      if (filters.outcome) q.append('outcome', filters.outcome);
+      if (filters.from) q.append('from', filters.from);
+      if (filters.to) q.append('to', filters.to);
+      if (filters.user_id) q.append('user_id', filters.user_id);
+      if (search) q.append('search', search);
+      q.append('limit', String(ps));
+      q.append('offset', String((p - 1) * ps));
+      const res = await api.get<any>(`/calls?${q}`);
+      setCalls(res.data ?? res);
+      setTotal(res.total ?? res.length ?? 0);
+    } finally { setLoading(false); }
+  }, [filters, search, page, pageSize]);
 
-  useEffect(() => { loadCalls(); }, [filters]);
+  useEffect(() => { setPage(1); }, [filters, search, pageSize]);
+  useEffect(() => { loadCalls(page, pageSize); }, [page, pageSize, filters, search]);
   useEffect(() => {
     if (isManager()) api.get<any[]>('/users').then(setUsers);
   }, []);
@@ -54,12 +67,34 @@ export default function Calls() {
     try {
       if (editing) await api.put(`/calls/${editing.id}`, form);
       else await api.post('/calls', form);
-      setShowModal(false); loadCalls();
+      setShowModal(false); loadCalls(page, pageSize);
     } catch (err: any) { setError(err.message); } finally { setLoading(false); }
   };
 
   const handleDelete = async (id: string) => {
-    await api.del(`/calls/${id}`); loadCalls();
+    await api.del(`/calls/${id}`); loadCalls(page, pageSize);
+  };
+
+  const handleExport = async () => {
+    // Export all matching records (no pagination)
+    const q = new URLSearchParams();
+    if (filters.segment) q.append('segment', filters.segment);
+    if (filters.outcome) q.append('outcome', filters.outcome);
+    if (filters.from) q.append('from', filters.from);
+    if (filters.to) q.append('to', filters.to);
+    if (filters.user_id) q.append('user_id', filters.user_id);
+    if (search) q.append('search', search);
+    q.append('limit', '5000'); q.append('offset', '0');
+    const res = await api.get<any>(`/calls?${q}`);
+    const rows = res.data ?? res;
+    exportCSV('calls', rows, [
+      { key: 'created_at', label: 'Date' }, { key: 'contact_name', label: 'Contact' },
+      { key: 'company', label: 'Company' }, { key: 'phone', label: 'Phone' },
+      { key: 'segment', label: 'Segment' }, { key: 'call_type', label: 'Type' },
+      { key: 'outcome', label: 'Outcome' }, { key: 'duration_min', label: 'Duration (min)' },
+      { key: 'notes', label: 'Notes' }, { key: 'next_action', label: 'Next Action' },
+      { key: 'next_action_date', label: 'Next Action Date' }, { key: 'user_name', label: 'By' },
+    ]);
   };
 
   return (
@@ -67,14 +102,22 @@ export default function Calls() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">📞 Call Tracker</h1>
-          <p className="text-xs text-gray-400 mt-0.5">{calls.length} calls</p>
+          <p className="text-xs text-gray-400 mt-0.5">{total.toLocaleString()} calls</p>
         </div>
-        <button className="btn-primary text-sm px-3 py-2 sm:px-4" onClick={openCreate}>+ Log Call</button>
+        <div className="flex gap-2">
+          <button onClick={handleExport} className="btn-secondary text-sm px-3 py-2 hidden sm:flex items-center gap-1">⬇ Export</button>
+          <button className="btn-primary text-sm px-3 py-2" onClick={openCreate}>+ Log Call</button>
+        </div>
       </div>
 
-      {/* Filters — horizontal scroll on mobile */}
+      {/* Filters */}
       <div className="bg-white rounded-xl border border-gray-200 p-3">
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          <input
+            type="text" placeholder="🔍 Search name, company, phone…"
+            className="input flex-shrink-0 text-xs py-1.5 w-48 sm:w-56"
+            value={search} onChange={e => setSearch(e.target.value)}
+          />
           <select className="select flex-shrink-0 text-xs w-28 py-1.5" value={filters.segment} onChange={e => setFilters(f => ({ ...f, segment: e.target.value }))}>
             <option value="">All Segments</option>
             {SEGMENTS.map(s => <option key={s}>{s}</option>)}
@@ -91,15 +134,18 @@ export default function Calls() {
               {users.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           )}
-          {Object.values(filters).some(v => v) && (
-            <button className="btn-ghost text-xs flex-shrink-0 px-3 py-1.5" onClick={() => setFilters({ segment: '', outcome: '', from: '', to: '', user_id: '' })}>✕ Clear</button>
+          {(search || Object.values(filters).some(v => v)) && (
+            <button className="btn-ghost text-xs flex-shrink-0 px-3 py-1.5" onClick={() => { setSearch(''); setFilters({ segment: '', outcome: '', from: '', to: '', user_id: '' }); }}>✕ Clear</button>
           )}
+          <button onClick={handleExport} className="btn-ghost text-xs flex-shrink-0 px-3 py-1.5 sm:hidden">⬇ Export</button>
         </div>
       </div>
 
+      {loading && <div className="text-center py-4 text-gray-400 text-sm">Loading…</div>}
+
       {/* Cards on mobile, table on desktop */}
       <div className="md:hidden space-y-2">
-        {calls.length === 0 && (
+        {!loading && calls.length === 0 && (
           <div className="bg-white rounded-xl border border-gray-200 py-12 text-center text-gray-400">
             No calls found. Tap ⚡ Quick Log or + Log Call.
           </div>
@@ -133,6 +179,7 @@ export default function Calls() {
             </div>
           </div>
         ))}
+        {calls.length > 0 && <Pagination page={page} pageSize={pageSize} total={total} onPage={setPage} onPageSize={ps => { setPageSize(ps); setPage(1); }} />}
       </div>
 
       {/* Desktop table */}
@@ -171,9 +218,10 @@ export default function Calls() {
                 </td>
               </tr>
             ))}
-            {calls.length === 0 && <tr><td colSpan={8} className="py-12 text-center text-gray-400">No calls yet.</td></tr>}
+            {calls.length === 0 && !loading && <tr><td colSpan={8} className="py-12 text-center text-gray-400">No calls found.</td></tr>}
           </tbody>
         </table>
+        <Pagination page={page} pageSize={pageSize} total={total} onPage={setPage} onPageSize={ps => { setPageSize(ps); setPage(1); }} />
       </div>
 
       {/* Modal */}

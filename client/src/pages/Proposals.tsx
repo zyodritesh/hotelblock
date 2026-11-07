@@ -327,7 +327,7 @@ export default function Proposals() {
 
   useEffect(() => {
     load();
-    api.get<any[]>('/leads').then(setLeads);
+    api.get<any>('/leads?limit=500').then(r => setLeads(r.data ?? r));
     api.get<Property[]>('/properties').then(setProperties);
   }, [activePropertyId]);
 

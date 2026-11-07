@@ -87,6 +87,23 @@ export const DUE_STATUS_CONFIG: Record<string, { color: string; bg: string; dot:
   'Never Contacted':{ color: 'text-gray-600',   bg: 'bg-gray-100',   dot: 'bg-gray-400',   label: 'Never Contacted' },
 };
 
+// CSV export
+export function exportCSV(filename: string, rows: Record<string, any>[], columns: { key: string; label: string }[]) {
+  const header = columns.map(c => `"${c.label}"`).join(',');
+  const body = rows.map(row =>
+    columns.map(c => {
+      const v = row[c.key] ?? '';
+      return `"${String(v).replace(/"/g, '""')}"`;
+    }).join(',')
+  ).join('\n');
+  const csv = `${header}\n${body}`;
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `${filename}_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+  URL.revokeObjectURL(url);
+}
+
 export function overdueUrgencyColor(daysOverdue: number): string {
   if (daysOverdue === 0) return 'border-l-yellow-400 bg-yellow-50';
   if (daysOverdue <= 3) return 'border-l-orange-400 bg-orange-50';

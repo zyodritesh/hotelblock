@@ -49,31 +49,35 @@ function enrichAgent(agent: any, followup: any): any {
 // GET /api/agents
 router.get('/', (req: AuthRequest, res: Response) => {
   const { search, type, country, tier, status, assigned_to, property_id, due_status } = req.query as Record<string, string>;
-  let q = `SELECT a.*, u.name as assigned_name,
-    af.frequency, af.frequency_days, af.last_contact_date, af.next_due_date, af.id as followup_id
-    FROM agents a
+  let where = `FROM agents a
     LEFT JOIN users u ON a.assigned_to = u.id
     LEFT JOIN agent_followups af ON af.agent_id = a.id
     WHERE a.status != 'Deleted'`;
   const params: any[] = [];
-  if (req.user!.role === 'executive') { q += ' AND a.assigned_to = ?'; params.push(req.user!.id); }
-  else if (assigned_to) { q += ' AND a.assigned_to = ?'; params.push(assigned_to); }
-  if (search) { q += ' AND (a.name LIKE ? OR a.agency_name LIKE ? OR a.city LIKE ? OR a.country LIKE ?)'; const s = `%${search}%`; params.push(s, s, s, s); }
-  if (type) { q += ' AND a.type = ?'; params.push(type); }
-  if (country) { q += ' AND a.country = ?'; params.push(country); }
-  if (tier) { q += ' AND a.tier = ?'; params.push(tier); }
-  if (status) { q += ' AND a.status = ?'; params.push(status); }
-  if (property_id) { q += ' AND a.property_id = ?'; params.push(property_id); }
-  q += ' ORDER BY a.name ASC';
+  if (req.user!.role === 'executive') { where += ' AND a.assigned_to = ?'; params.push(req.user!.id); }
+  else if (assigned_to) { where += ' AND a.assigned_to = ?'; params.push(assigned_to); }
+  if (search) { where += ' AND (a.name LIKE ? OR a.agency_name LIKE ? OR a.city LIKE ? OR a.country LIKE ?)'; const s = `%${search}%`; params.push(s, s, s, s); }
+  if (type) { where += ' AND a.type = ?'; params.push(type); }
+  if (country) { where += ' AND a.country = ?'; params.push(country); }
+  if (tier) { where += ' AND a.tier = ?'; params.push(tier); }
+  if (status) { where += ' AND a.status = ?'; params.push(status); }
+  if (property_id) { where += ' AND a.property_id = ?'; params.push(property_id); }
+  const total = (db.prepare(`SELECT COUNT(*) as c ${where}`).get(...params) as any).c;
 
-  let rows = db.prepare(q).all(...params).map((row: any) => {
+  let q = `SELECT a.*, u.name as assigned_name,
+    af.frequency, af.frequency_days, af.last_contact_date, af.next_due_date, af.id as followup_id
+    ${where} ORDER BY a.name ASC LIMIT ? OFFSET ?`;
+  const lim = parseInt((req.query.limit as string) || '50');
+  const off = parseInt((req.query.offset as string) || '0');
+
+  let rows = db.prepare(q).all(...params, lim, off).map((row: any) => {
     const dueS = computeDueStatus(row.next_due_date, row.last_contact_date);
     return { ...row, due_status: dueS, days_overdue: daysOverdue(row.next_due_date) };
   });
 
   if (due_status) rows = rows.filter((r: any) => r.due_status === due_status);
 
-  return res.json(rows);
+  return res.json({ data: rows, total });
 });
 
 // GET /api/agents/due-today — agents due or overdue for calling user

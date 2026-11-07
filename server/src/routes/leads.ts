@@ -7,16 +7,17 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/', (req: AuthRequest, res: Response) => {
-  const { user_id, segment, stage } = req.query as Record<string, string>;
-  let q = `SELECT l.*, u.name as user_name, a.name as account_name, c.name as contact_name FROM leads l
-    LEFT JOIN users u ON l.user_id=u.id LEFT JOIN accounts a ON l.account_id=a.id LEFT JOIN contacts c ON l.contact_id=c.id WHERE 1=1`;
+  const { user_id, segment, stage, search, limit = '200', offset = '0' } = req.query as Record<string, string>;
+  let base = `FROM leads l LEFT JOIN users u ON l.user_id=u.id LEFT JOIN accounts a ON l.account_id=a.id LEFT JOIN contacts c ON l.contact_id=c.id WHERE 1=1`;
   const params: any[] = [];
-  if (req.user!.role === 'executive') { q += ' AND l.user_id = ?'; params.push(req.user!.id); }
-  else if (user_id) { q += ' AND l.user_id = ?'; params.push(user_id); }
-  if (segment) { q += ' AND l.segment = ?'; params.push(segment); }
-  if (stage) { q += ' AND l.stage = ?'; params.push(stage); }
-  q += ' ORDER BY l.updated_at DESC';
-  return res.json(db.prepare(q).all(...params));
+  if (req.user!.role === 'executive') { base += ' AND l.user_id = ?'; params.push(req.user!.id); }
+  else if (user_id) { base += ' AND l.user_id = ?'; params.push(user_id); }
+  if (segment) { base += ' AND l.segment = ?'; params.push(segment); }
+  if (stage) { base += ' AND l.stage = ?'; params.push(stage); }
+  if (search) { base += ' AND (l.title LIKE ? OR a.name LIKE ? OR c.name LIKE ?)'; const s = `%${search}%`; params.push(s, s, s); }
+  const total = (db.prepare(`SELECT COUNT(*) as c ${base}`).get(...params) as any).c;
+  const rows = db.prepare(`SELECT l.*, u.name as user_name, a.name as account_name, c.name as contact_name ${base} ORDER BY l.updated_at DESC LIMIT ? OFFSET ?`).all(...params, parseInt(limit), parseInt(offset));
+  return res.json({ data: rows, total });
 });
 
 router.post('/', (req: AuthRequest, res: Response) => {
