@@ -268,6 +268,33 @@ export function initDb() {
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
 
+    CREATE TABLE IF NOT EXISTS proposal_sections (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS proposal_item_templates (
+      id TEXT PRIMARY KEY,
+      section_id TEXT NOT NULL,
+      description TEXT NOT NULL,
+      default_rate REAL NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (section_id) REFERENCES proposal_sections(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS terms_templates (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      body TEXT NOT NULL DEFAULT '',
+      is_default INTEGER NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS agent_activity_log (
       id TEXT PRIMARY KEY,
       agent_id TEXT NOT NULL,
@@ -308,7 +335,7 @@ export function initDb() {
     "ALTER TABLE proposals ADD COLUMN photos TEXT DEFAULT '[]'",
     "ALTER TABLE properties ADD COLUMN website TEXT",
     "ALTER TABLE properties ADD COLUMN brand_color TEXT NOT NULL DEFAULT '#2563eb'",
-    // agent tables created via CREATE TABLE IF NOT EXISTS above — no ALTER needed
+    "ALTER TABLE proposals ADD COLUMN terms TEXT DEFAULT ''",
   ];
 
   for (const sql of migrations) {
@@ -341,6 +368,80 @@ export function initDb() {
     db.prepare(`INSERT INTO users (id, name, email, password_hash, role) VALUES (?, ?, ?, ?, ?)`)
       .run(uuidv4(), 'Admin User', 'admin@hotel.com', hash, 'admin');
   }
+
+  seedProposalCatalog(db);
+}
+
+const DEFAULT_TERMS = `1. Validity
+This proposal is valid until the date stated on the first page. Rates may be revised after that date.
+
+2. Payment Terms
+50% of the estimated value is payable as advance at the time of confirmation.
+The balance is payable 7 days before the event or check-in.
+GST is charged extra at the rate shown on this proposal.
+
+3. Cancellation
+30 days or more before the event: advance refunded, less a 10% booking fee.
+15 to 29 days before: 50% of the advance is retained.
+Less than 15 days before: the advance is non-refundable.
+Room blocks: unsold rooms can be released 14 days prior without charge. Inside 14 days, one night is retained per room.
+
+4. What is included
+Rates cover only the line items listed. Extra guests, extended hours, additional power, and damages are billed at actuals.
+
+5. Confirmation
+Dates and venues are held only after written acceptance of this proposal and receipt of the advance.`;
+
+function seedProposalCatalog(database: typeof db) {
+  const { v4: uuidv4 } = require('uuid');
+  const sectionCount = (db.prepare('SELECT COUNT(*) as c FROM proposal_sections').get() as any).c;
+  if (sectionCount === 0) {
+    const sections = ['Accommodation', 'Food & Beverage', 'Event Services', 'AV & Decor', 'Transfers & Logistics', 'Other'];
+    const insertSection = db.prepare('INSERT INTO proposal_sections (id, name, sort_order) VALUES (?,?,?)');
+    const insertItem = db.prepare('INSERT INTO proposal_item_templates (id, section_id, description, default_rate) VALUES (?,?,?,?)');
+    const items: Record<string, [string, number][]> = {
+      'Accommodation': [['Deluxe Room — Single occupancy', 8500], ['Deluxe Room — Double occupancy', 10500], ['Suite upgrade', 18000], ['Extra bed', 1500]],
+      'Food & Beverage': [['Welcome hi-tea per person', 750], ['Lunch buffet per person', 1450], ['Gala dinner per person', 2200], ['Coffee break per person', 450]],
+      'Event Services': [['Ballroom rental — full day', 85000], ['Meeting room — half day', 25000], ['Stage, podium and branding wall', 35000]],
+      'AV & Decor': [['LED wall and sound system', 45000], ['Floral decor package', 60000], ['Uplighting and dance floor', 28000]],
+      'Transfers & Logistics': [['Airport transfer — sedan', 2200], ['Coach transfer — 35 seater', 8500]],
+      'Other': [['Service charge and coordination', 15000]],
+    };
+    sections.forEach((name, i) => {
+      const id = uuidv4();
+      insertSection.run(id, name, i + 1);
+      for (const [description, rate] of items[name]) insertItem.run(uuidv4(), id, description, rate);
+    });
+  }
+
+  const termsCount = (db.prepare('SELECT COUNT(*) as c FROM terms_templates').get() as any).c;
+  if (termsCount === 0) {
+    const insertTerms = db.prepare('INSERT INTO terms_templates (id, name, body, is_default) VALUES (?,?,?,?)');
+    insertTerms.run(uuidv4(), 'Standard Hotel Terms', DEFAULT_TERMS, 1);
+    insertTerms.run(uuidv4(), 'Wedding Package Terms', `${DEFAULT_TERMS}
+
+6. Wedding specifics
+The venue is handed over 4 hours before the function for decor. Music must end by 11:30 pm unless an extension is confirmed in writing. Outside catering is not permitted.`, 0);
+    insertTerms.run(uuidv4(), 'Corporate Room Block Terms', `1. Room block
+Rooms are held at the quoted rate until the cutoff date, 21 days before arrival.
+Unpicked rooms are released to general inventory after the cutoff.
+
+2. Billing
+Room and tax are billed to the company. Incidentals are billed to the guest unless a master bill is agreed in writing.
+GST is extra as applicable.
+
+3. Cancellation
+Individual rooms cancelled inside 48 hours of arrival are charged one night.
+Group attrition above 20% of the blocked rooms is charged at one night per room.
+
+4. Confirmation
+The block is confirmed only after this proposal is accepted and the advance is received.`, 0);
+  }
+
+  const defaultTerms = (db.prepare('SELECT body FROM terms_templates WHERE is_default=1 AND active=1 ORDER BY updated_at DESC LIMIT 1').get() as any)?.body
+    || (db.prepare('SELECT body FROM terms_templates WHERE active=1 LIMIT 1').get() as any)?.body
+    || DEFAULT_TERMS;
+  db.prepare(`UPDATE proposals SET terms = ? WHERE terms IS NULL OR terms = ''`).run(defaultTerms);
 }
 
 export default db;

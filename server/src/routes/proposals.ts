@@ -66,7 +66,7 @@ router.post('/', (req: AuthRequest, res: Response) => {
   const {
     lead_id, property_id, title, status, client_name, client_company, client_phone, client_email,
     event_date, event_type, venue, pax, validity_date, payment_terms, cancellation_policy,
-    tax_percent, discount, total_value, line_items, notes
+    tax_percent, discount, total_value, line_items, notes, terms
   } = req.body;
   if (!title) return res.status(400).json({ error: 'title required' });
   const id = uuidv4();
@@ -75,13 +75,13 @@ router.post('/', (req: AuthRequest, res: Response) => {
   db.prepare(`INSERT INTO proposals
     (id,lead_id,user_id,property_id,title,ref_number,status,client_name,client_company,client_phone,client_email,
     event_date,event_type,venue,pax,validity_date,payment_terms,cancellation_policy,
-    tax_percent,discount,total_value,line_items,photos,notes,created_at,updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    tax_percent,discount,total_value,line_items,photos,notes,terms,created_at,updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     id, lead_id||null, req.user!.id, property_id||null, title, ref_number,
     status||'Draft', client_name||'', client_company||'', client_phone||'', client_email||'',
     event_date||null, event_type||'', venue||'', pax||0, validity_date||null,
     payment_terms||'', cancellation_policy||'', tax_percent??18, discount||0,
-    total_value||0, JSON.stringify(line_items||[]), '[]', notes||'', now, now
+    total_value||0, JSON.stringify(line_items||[]), '[]', notes||'', terms||'', now, now
   );
   return res.status(201).json(db.prepare('SELECT * FROM proposals WHERE id=?').get(id));
 });
@@ -93,13 +93,13 @@ router.put('/:id', (req: AuthRequest, res: Response) => {
   const {
     lead_id, property_id, title, status, client_name, client_company, client_phone, client_email,
     event_date, event_type, venue, pax, validity_date, payment_terms, cancellation_policy,
-    tax_percent, discount, total_value, line_items, notes
+    tax_percent, discount, total_value, line_items, notes, terms
   } = req.body;
   const now = new Date().toISOString();
   db.prepare(`UPDATE proposals SET
     lead_id=?,property_id=?,title=?,status=?,client_name=?,client_company=?,client_phone=?,client_email=?,
     event_date=?,event_type=?,venue=?,pax=?,validity_date=?,payment_terms=?,cancellation_policy=?,
-    tax_percent=?,discount=?,total_value=?,line_items=?,notes=?,updated_at=?
+    tax_percent=?,discount=?,total_value=?,line_items=?,notes=?,terms=?,updated_at=?
     WHERE id=?`).run(
     lead_id??p.lead_id, property_id??p.property_id, title??p.title, status??p.status,
     client_name??p.client_name, client_company??p.client_company, client_phone??p.client_phone, client_email??p.client_email,
@@ -108,7 +108,7 @@ router.put('/:id', (req: AuthRequest, res: Response) => {
     tax_percent??p.tax_percent, discount??p.discount,
     total_value??p.total_value,
     line_items !== undefined ? JSON.stringify(line_items) : p.line_items,
-    notes??p.notes, now, req.params.id
+    notes??p.notes, terms??p.terms, now, req.params.id
   );
   return res.json(db.prepare('SELECT * FROM proposals WHERE id=?').get(req.params.id));
 });

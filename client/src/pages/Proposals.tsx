@@ -9,7 +9,6 @@ import autoTable from 'jspdf-autotable';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-const SECTIONS = ['Accommodation', 'Food & Beverage', 'Event Services', 'AV & Decor', 'Transfers & Logistics', 'Other'] as const;
 const EVENT_TYPES = ['Conference', 'Wedding', 'Social Event', 'Corporate Dinner', 'Product Launch', 'Training', 'Exhibition', 'Other'] as const;
 const STATUS_COLORS: Record<string, string> = {
   Draft: 'bg-gray-100 text-gray-600', Sent: 'bg-blue-100 text-blue-700',
@@ -24,6 +23,7 @@ interface Proposal {
   client_name: string; client_company: string; client_phone: string; client_email: string;
   event_date: string | null; event_type: string; venue: string; pax: number;
   validity_date: string | null; payment_terms: string; cancellation_policy: string;
+  terms: string;
   tax_percent: number; discount: number; total_value: number;
   line_items: string; photos: string; notes: string;
   created_at: string; updated_at: string;
@@ -40,7 +40,15 @@ const DEFAULT_CANCELLATION = '• Cancellation 30+ days prior: Full refund less 
 
 // ─── PDF Generator ────────────────────────────────────────────────────────────
 
-async function generatePDF(p: Proposal, property: Property | null) {
+function groupLineItems(lineItems: LineItem[], sectionOrder: string[]) {
+  const known = new Set(sectionOrder);
+  const extras = [...new Set(lineItems.map(i => i.section))].filter(s => s && !known.has(s));
+  return [...sectionOrder, ...extras]
+    .map(section => ({ section, items: lineItems.filter(i => i.section === section) }))
+    .filter(g => g.items.length > 0);
+}
+
+async function generatePDF(p: Proposal, property: Property | null, sectionOrder: string[] = []) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const W = 210, MARGIN = 14;
   const brand = property?.brand_color || '#2563eb';
@@ -136,10 +144,7 @@ async function generatePDF(p: Proposal, property: Property | null) {
   let lineItems: LineItem[] = [];
   try { lineItems = JSON.parse(p.line_items) || []; } catch {}
 
-  const sectionGroups = SECTIONS.map(s => ({
-    section: s,
-    items: lineItems.filter(i => i.section === s),
-  })).filter(g => g.items.length > 0);
+  const sectionGroups = groupLineItems(lineItems, sectionOrder);
 
   for (const group of sectionGroups) {
     // Section header
@@ -204,28 +209,23 @@ async function generatePDF(p: Proposal, property: Property | null) {
   y += 14;
 
   // ── Terms ─────────────────────────────────────────────────────────────────
-  if (p.payment_terms || p.cancellation_policy) {
+  const termsText = (p.terms || '').trim()
+    || [p.payment_terms && `Payment Terms\n${p.payment_terms}`, p.cancellation_policy && `Cancellation\n${p.cancellation_policy}`].filter(Boolean).join('\n\n');
+  if (termsText) {
+    if (y > 250) { doc.addPage(); y = 16; }
     doc.setTextColor(br, bg, bb);
     doc.setFontSize(9); doc.setFont('helvetica', 'bold');
     doc.text('TERMS & CONDITIONS', MARGIN, y); y += 2;
     doc.setDrawColor(br, bg, bb); doc.setLineWidth(0.4);
     doc.line(MARGIN, y, W - MARGIN, y); y += 5;
-
-    if (p.payment_terms) {
-      doc.setTextColor(40, 40, 40); doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
-      doc.text('Payment Terms:', MARGIN, y); y += 4;
-      doc.setFont('helvetica', 'normal');
-      const ptLines = doc.splitTextToSize(p.payment_terms, W - MARGIN * 2);
-      doc.text(ptLines, MARGIN, y); y += ptLines.length * 4 + 3;
+    doc.setTextColor(40, 40, 40); doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+    const termLines = doc.splitTextToSize(termsText, W - MARGIN * 2) as string[];
+    for (const line of termLines) {
+      if (y > 280) { doc.addPage(); y = 16; }
+      doc.text(line, MARGIN, y);
+      y += 4;
     }
-
-    if (p.cancellation_policy) {
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(40, 40, 40);
-      doc.text('Cancellation Policy:', MARGIN, y); y += 4;
-      doc.setFont('helvetica', 'normal');
-      const cpLines = doc.splitTextToSize(p.cancellation_policy, W - MARGIN * 2);
-      doc.text(cpLines, MARGIN, y); y += cpLines.length * 4 + 3;
-    }
+    y += 3;
   }
 
   if (p.notes) {
@@ -309,6 +309,11 @@ export default function Proposals() {
   const [error, setError] = useState('');
   const [photoUploading, setPhotoUploading] = useState(false);
   const photoRef = useRef<HTMLInputElement>(null);
+  const [sections, setSections] = useState<{ id: string; name: string }[]>([]);
+  const [itemTemplates, setItemTemplates] = useState<{ id: string; section_name: string; description: string; default_rate: number }[]>([]);
+  const [termTemplates, setTermTemplates] = useState<{ id: string; name: string; body: string; is_default: number }[]>([]);
+  const sectionNames = sections.map(s => s.name);
+  const defaultTerms = termTemplates.find(t => t.is_default)?.body || termTemplates[0]?.body || '';
 
   // Form state
   const [form, setForm] = useState({
@@ -316,6 +321,7 @@ export default function Proposals() {
     client_name: '', client_company: '', client_phone: '', client_email: '',
     event_date: '', event_type: 'Conference', venue: '', pax: 0,
     validity_date: '', payment_terms: DEFAULT_PAYMENT, cancellation_policy: DEFAULT_CANCELLATION,
+    terms: '',
     tax_percent: 18, discount: 0, notes: '',
   });
   const [items, setItems] = useState<LineItem[]>([{ ...EMPTY_ITEM }]);
@@ -329,6 +335,11 @@ export default function Proposals() {
     load();
     api.get<any>('/leads?limit=500').then(r => setLeads(r.data ?? r));
     api.get<Property[]>('/properties').then(setProperties);
+    api.get<any>('/catalog').then(data => {
+      setSections(data.sections || []);
+      setItemTemplates(data.items || []);
+      setTermTemplates(data.terms || []);
+    }).catch(() => {});
   }, [activePropertyId]);
 
   const subtotal = items.reduce((s, i) => s + i.qty * i.rate, 0);
@@ -342,8 +353,9 @@ export default function Proposals() {
       client_name: '', client_company: '', client_phone: '', client_email: '',
       event_date: '', event_type: 'Conference', venue: '', pax: 0,
       validity_date: '', payment_terms: DEFAULT_PAYMENT, cancellation_policy: DEFAULT_CANCELLATION,
+      terms: defaultTerms,
       tax_percent: 18, discount: 0, notes: '' });
-    setItems([{ ...EMPTY_ITEM }]);
+    setItems([{ ...EMPTY_ITEM, section: sectionNames[0] || 'Accommodation' }]);
     setShowModal(true);
   };
 
@@ -358,6 +370,7 @@ export default function Proposals() {
       validity_date: p.validity_date || '',
       payment_terms: p.payment_terms || DEFAULT_PAYMENT,
       cancellation_policy: p.cancellation_policy || DEFAULT_CANCELLATION,
+      terms: p.terms || defaultTerms,
       tax_percent: p.tax_percent || 18, discount: p.discount || 0, notes: p.notes || '',
     });
     try { setItems(JSON.parse(p.line_items) || [{ ...EMPTY_ITEM }]); } catch { setItems([{ ...EMPTY_ITEM }]); }
@@ -366,6 +379,12 @@ export default function Proposals() {
 
   const updateItem = (i: number, field: keyof LineItem, val: string | number) => {
     setItems(prev => prev.map((item, idx) => idx === i ? { ...item, [field]: val } : item));
+  };
+
+  const applyDescription = (i: number, templateId: string) => {
+    const tpl = itemTemplates.find(t => t.id === templateId);
+    if (!tpl) return;
+    setItems(prev => prev.map((item, idx) => idx === i ? { ...item, description: tpl.description, rate: tpl.default_rate } : item));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -399,14 +418,14 @@ export default function Proposals() {
 
   const handleExportPdf = async (p: Proposal) => {
     const fullProp = properties.find(pr => pr.id === p.property_id) || null;
-    await generatePDF(p, fullProp);
+    await generatePDF(p, fullProp, sectionNames);
   };
 
   // Group items by section for display in view modal
   const getGroupedItems = (lineItemsJson: string) => {
-    let items: LineItem[] = [];
-    try { items = JSON.parse(lineItemsJson) || []; } catch {}
-    return SECTIONS.map(s => ({ section: s, items: items.filter(i => i.section === s) })).filter(g => g.items.length > 0);
+    let parsed: LineItem[] = [];
+    try { parsed = JSON.parse(lineItemsJson) || []; } catch {}
+    return groupLineItems(parsed, sectionNames);
   };
 
   const getPhotos = (photosJson: string): string[] => {
@@ -537,10 +556,18 @@ export default function Proposals() {
                     <tr key={i} className="border-t border-gray-100">
                       <td className="px-2 py-1">
                         <select className="select text-xs py-1 px-2" value={item.section} onChange={e => updateItem(i, 'section', e.target.value)}>
-                          {SECTIONS.map(s => <option key={s}>{s}</option>)}
+                          {(sectionNames.length ? sectionNames : ['Accommodation']).map(s => <option key={s}>{s}</option>)}
                         </select>
                       </td>
-                      <td className="px-2 py-1"><input className="input border-0 p-1 text-sm" value={item.description} onChange={e => updateItem(i, 'description', e.target.value)} placeholder="e.g. Grand Ballroom — Full Day" /></td>
+                      <td className="px-2 py-1">
+                        <select className="select text-xs py-1 px-2 mb-1" value="" onChange={e => { applyDescription(i, e.target.value); e.target.value = ''; }}>
+                          <option value="">Description from template…</option>
+                          {itemTemplates.filter(t => t.section_name === item.section).map(t => (
+                            <option key={t.id} value={t.id}>{t.description} — ₹{t.default_rate.toLocaleString('en-IN')}</option>
+                          ))}
+                        </select>
+                        <input className="input border-0 p-1 text-sm" value={item.description} onChange={e => updateItem(i, 'description', e.target.value)} placeholder="Or type a custom description" />
+                      </td>
                       <td className="px-2 py-1"><input type="number" className="input border-0 p-1 text-sm w-14" value={item.qty} min={1} onChange={e => updateItem(i, 'qty', parseInt(e.target.value) || 1)} /></td>
                       <td className="px-2 py-1"><input type="number" className="input border-0 p-1 text-sm w-24" value={item.rate} onChange={e => updateItem(i, 'rate', parseFloat(e.target.value) || 0)} /></td>
                       <td className="px-2 py-1 text-green-600 font-medium">{formatCurrency(item.qty * item.rate)}</td>
@@ -550,7 +577,7 @@ export default function Proposals() {
                 </tbody>
               </table>
             </div>
-            <button type="button" className="btn-ghost text-sm mt-2" onClick={() => setItems(prev => [...prev, { ...EMPTY_ITEM }])}>+ Add Line Item</button>
+            <button type="button" className="btn-ghost text-sm mt-2" onClick={() => setItems(prev => [...prev, { ...EMPTY_ITEM, section: sectionNames[0] || 'Accommodation' }])}>+ Add Line Item</button>
 
             {/* Totals summary */}
             <div className="mt-4 flex justify-end">
@@ -574,8 +601,18 @@ export default function Proposals() {
           <section>
             <h4 className="text-sm font-semibold text-gray-700 mb-3 border-b pb-2">Terms & Conditions</h4>
             <div className="space-y-4">
-              <div><label className="label">Payment Terms</label><textarea className="input" rows={3} value={form.payment_terms} onChange={e => setForm(f => ({ ...f, payment_terms: e.target.value }))} /></div>
-              <div><label className="label">Cancellation Policy</label><textarea className="input" rows={4} value={form.cancellation_policy} onChange={e => setForm(f => ({ ...f, cancellation_policy: e.target.value }))} /></div>
+              <div>
+                <label className="label">Load a template</label>
+                <select className="select" value="" onChange={e => {
+                  const tpl = termTemplates.find(t => t.id === e.target.value);
+                  if (tpl) setForm(f => ({ ...f, terms: tpl.body }));
+                }}>
+                  <option value="">Choose a template to fill the text below…</option>
+                  {termTemplates.map(t => <option key={t.id} value={t.id}>{t.name}{t.is_default ? ' (default)' : ''}</option>)}
+                </select>
+                <p className="text-xs text-gray-400 mt-1">The text below belongs to this proposal only. Change the master wording in Settings.</p>
+              </div>
+              <div><label className="label">Terms for this proposal</label><textarea className="input" rows={10} value={form.terms} onChange={e => setForm(f => ({ ...f, terms: e.target.value }))} /></div>
               <div><label className="label">Additional Notes</label><textarea className="input" rows={2} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} /></div>
             </div>
           </section>
@@ -664,6 +701,13 @@ export default function Proposals() {
                 })()}
               </div>
             </div>
+
+            {(viewProposal.terms || viewProposal.payment_terms || viewProposal.cancellation_policy) && (
+              <div>
+                <h4 className="font-semibold text-gray-800 mb-2">Terms & Conditions</h4>
+                <pre className="whitespace-pre-wrap text-sm text-gray-700 bg-gray-50 rounded-lg p-4 font-sans">{viewProposal.terms || `${viewProposal.payment_terms || ''}\n\n${viewProposal.cancellation_policy || ''}`}</pre>
+              </div>
+            )}
 
             {/* Photos section */}
             <div>

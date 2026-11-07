@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
+import ProposalTemplates from '../components/ProposalTemplates';
 
 interface User { id: string; name: string; email: string; role: string; active: number; }
 
@@ -69,6 +70,8 @@ export default function Settings() {
           <button type="submit" className="btn-primary" disabled={loading}>Save Branding</button>
         </form>
       </div>
+
+      <ProposalTemplates />
 
       {/* User Management */}
       <div className="card">
