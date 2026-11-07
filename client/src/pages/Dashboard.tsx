@@ -34,7 +34,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Good {getGreeting()}, {user?.name?.split(' ')[0]} 👋</h1>
           <p className="text-xs sm:text-sm text-gray-500 mt-1">{new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
@@ -42,9 +42,10 @@ export default function Dashboard() {
             {user?.role === 'executive' ? 'Access: your own calls, meetings, leads, proposals, and agents only.' : user?.role === 'manager' ? 'Access: every sales executive, plus your own records.' : 'Access: full team, including settings.'}
           </p>
         </div>
-        <Link to="/attendance" className="btn-primary text-sm px-3 py-2">
-          🕐 Attendance
-        </Link>
+        <div className="flex gap-2">
+          <Link to="/wallet" className="btn-secondary text-sm px-3 py-2">👛 Wallet</Link>
+          <Link to="/attendance" className="btn-primary text-sm px-3 py-2">🕐 Attendance</Link>
+        </div>
       </div>
 
       {/* KPI Cards */}

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import Modal from '../components/Modal';
 import { currentMonth, formatCurrency, gradeColor, SEGMENTS, cn } from '../lib/utils';
@@ -69,7 +70,10 @@ export default function Targets() {
   return (
     <div className="space-y-6">
       <div className="page-header">
-        <h1 className="page-title">🎯 Targets & Review Scores</h1>
+        <div>
+          <h1 className="page-title">🎯 Targets & Review Scores</h1>
+          <Link to="/wallet" className="text-sm text-blue-600 hover:underline">Incentive wallet and target score →</Link>
+        </div>
         <div className="flex items-center gap-3">
           <input type="month" className="input w-36" value={month} onChange={e => setMonth(e.target.value)} />
           {canManage && <button className="btn-primary" onClick={() => { setTargetForm({ user_id: users[0]?.id || '', segment: 'All', calls_target: 0, meetings_target: 0, revenue_target: 0 }); setShowTargetModal(true); }}>+ Set Target</button>}

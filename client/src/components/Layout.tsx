@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { path: '/proposals', label: 'Proposals', icon: '📄' },
   { path: '/tasks', label: 'Tasks', icon: '✅' },
   { path: '/targets', label: 'Targets & Scores', icon: '🎯' },
+  { path: '/wallet', label: 'Incentive Wallet', icon: '👛' },
   { path: '/agents', label: 'Agent Network', icon: '🌐' },
   { path: '/agents/due', label: 'My Follow-ups', icon: '🔔', badge: true },
   { path: '/reports', label: 'Reports', icon: '📈' },

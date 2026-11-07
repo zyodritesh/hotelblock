@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import { seedIncentives } from './seedIncentives';
 
 const DB_PATH = path.join(__dirname, '../../data/hotelblock.db');
 
@@ -308,6 +309,61 @@ export function initDb() {
       FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE,
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
+
+    CREATE TABLE IF NOT EXISTS score_targets (
+      id TEXT PRIMARY KEY,
+      scope TEXT NOT NULL DEFAULT 'individual',
+      user_id TEXT,
+      month TEXT NOT NULL,
+      metric TEXT NOT NULL,
+      target_value REAL NOT NULL DEFAULT 0,
+      weight REAL NOT NULL DEFAULT 1,
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS incentive_rules (
+      id TEXT PRIMARY KEY,
+      scope TEXT NOT NULL DEFAULT 'individual',
+      metric TEXT NOT NULL,
+      name TEXT NOT NULL,
+      calc TEXT NOT NULL DEFAULT 'per_unit',
+      rate REAL NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS incentives (
+      id TEXT PRIMARY KEY,
+      scope TEXT NOT NULL DEFAULT 'individual',
+      user_id TEXT,
+      month TEXT NOT NULL,
+      title TEXT NOT NULL,
+      metric TEXT,
+      amount REAL NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'added',
+      maker_id TEXT NOT NULL,
+      approved_by TEXT,
+      approved_at TEXT,
+      paid_by TEXT,
+      paid_at TEXT,
+      note TEXT,
+      rule_id TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS incentive_events (
+      id TEXT PRIMARY KEY,
+      incentive_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      actor_id TEXT,
+      amount REAL,
+      note TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (incentive_id) REFERENCES incentives(id) ON DELETE CASCADE
+    );
   `);
 
   // Run migrations for existing DBs (add new columns if missing)
@@ -370,6 +426,7 @@ export function initDb() {
   }
 
   seedProposalCatalog(db);
+  seedIncentives(db);
 }
 
 const DEFAULT_TERMS = `1. Validity
