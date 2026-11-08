@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Pagination from '../components/Pagination';
+import FollowUpPicker from '../components/FollowUpPicker';
 import { formatDateTime, formatDate, SEGMENTS, CALL_TYPES, CALL_OUTCOMES, SEGMENT_COLORS, OUTCOME_COLORS, cn, exportCSV } from '../lib/utils';
 import { useAuthStore } from '../store/auth';
 
@@ -249,7 +250,7 @@ export default function Calls() {
           </div>
           <div className="md:col-span-2"><label className="label">Notes</label><textarea className="input" rows={3} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} /></div>
           <div><label className="label">Next Action</label><input className="input" value={form.next_action} onChange={e => setForm(f => ({ ...f, next_action: e.target.value }))} placeholder="e.g. Send proposal" /></div>
-          <div><label className="label">Next Action Date</label><input type="date" className="input" value={form.next_action_date} onChange={e => setForm(f => ({ ...f, next_action_date: e.target.value }))} /></div>
+          <FollowUpPicker label="When to follow up" value={form.next_action_date} onChange={next_action_date => setForm(f => ({ ...f, next_action_date }))} />
           <div className="md:col-span-2 flex justify-end gap-3 pt-2">
             <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
             <button type="submit" className="btn-primary" disabled={loading}>{loading ? 'Saving…' : editing ? 'Update Call' : 'Log Call'}</button>

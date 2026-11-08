@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import Modal from '../components/Modal';
+import FollowUpPicker from '../components/FollowUpPicker';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { formatDate, cn } from '../lib/utils';
 import { useAuthStore } from '../store/auth';
@@ -120,7 +121,7 @@ export default function Tasks() {
         {error && <div className="bg-red-50 text-red-700 rounded-lg px-4 py-3 mb-4 text-sm">{error}</div>}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div><label className="label">Task *</label><input className="input" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required placeholder="e.g. Send proposal to ABC Corp" /></div>
-          <div><label className="label">Due Date</label><input type="date" className="input" value={form.due_date} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} /></div>
+          <FollowUpPicker label="When to follow up" value={form.due_date} onChange={due_date => setForm(f => ({ ...f, due_date }))} />
           {isManager() && (
             <div><label className="label">Assign To</label>
               <select className="select" value={form.user_id} onChange={e => setForm(f => ({ ...f, user_id: e.target.value }))}>

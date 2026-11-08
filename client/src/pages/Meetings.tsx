@@ -3,16 +3,17 @@ import { api } from '../api/client';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Pagination from '../components/Pagination';
+import FollowUpPicker from '../components/FollowUpPicker';
 import { formatDateTime, formatDate, SEGMENTS, MEETING_PURPOSES, SEGMENT_COLORS, cn, exportCSV } from '../lib/utils';
 import { useAuthStore } from '../store/auth';
 
 interface Meeting {
   id: string; contact_name: string; company: string; user_id: string; user_name: string;
   segment: string; purpose: string; outcome: string; notes: string; photo_path: string | null;
-  lat: number | null; lng: number | null; address_label: string; meeting_date: string; created_at: string;
+  lat: number | null; lng: number | null; address_label: string; meeting_date: string; follow_up_date: string | null; created_at: string;
 }
 
-const EMPTY_FORM = { contact_name: '', company: '', segment: 'Corporate', purpose: 'Sales Visit', outcome: '', notes: '', address_label: '', meeting_date: new Date().toISOString().slice(0, 16) };
+const EMPTY_FORM = { contact_name: '', company: '', segment: 'Corporate', purpose: 'Sales Visit', outcome: '', notes: '', address_label: '', meeting_date: new Date().toISOString().slice(0, 16), follow_up_date: '' };
 
 export default function Meetings() {
   const { isManager } = useAuthStore();
@@ -106,7 +107,7 @@ export default function Meetings() {
       { key: 'meeting_date', label: 'Date' }, { key: 'contact_name', label: 'Contact' },
       { key: 'company', label: 'Company' }, { key: 'segment', label: 'Segment' },
       { key: 'purpose', label: 'Purpose' }, { key: 'outcome', label: 'Outcome' },
-      { key: 'address_label', label: 'Address' }, { key: 'notes', label: 'Notes' },
+      { key: 'address_label', label: 'Address' }, { key: 'follow_up_date', label: 'Follow-up' }, { key: 'notes', label: 'Notes' },
       { key: 'user_name', label: 'By' },
     ]);
   };
@@ -166,12 +167,13 @@ export default function Meetings() {
               {m.lat && <span>📍 {m.address_label || `${m.lat?.toFixed(4)}, ${m.lng?.toFixed(4)}`}</span>}
             </div>
             {m.outcome && <p className="text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">{m.outcome}</p>}
-            <div className="flex items-center justify-between text-xs text-gray-400 mt-auto">
+            <div className="flex items-center justify-between text-xs text-gray-400 mt-auto gap-2">
               <span>{formatDate(m.meeting_date)}</span>
+              {m.follow_up_date && <span className="text-blue-600 font-medium">Follow up {formatDate(m.follow_up_date)}</span>}
               <span>{m.user_name}</span>
             </div>
             <div className="flex gap-2" onClick={e => e.stopPropagation()}>
-              <button className="btn-ghost text-xs px-2 py-1" onClick={() => { setEditing(m); setForm({ contact_name: m.contact_name, company: m.company, segment: m.segment, purpose: m.purpose, outcome: m.outcome, notes: m.notes, address_label: m.address_label, meeting_date: m.meeting_date?.slice(0, 16) || '' }); setGps(m.lat && m.lng ? { lat: m.lat, lng: m.lng } : null); setPhotoPreview(m.photo_path); setPhotoFile(null); setShowModal(true); }}>Edit</button>
+              <button className="btn-ghost text-xs px-2 py-1" onClick={() => { setEditing(m); setForm({ contact_name: m.contact_name, company: m.company, segment: m.segment, purpose: m.purpose, outcome: m.outcome, notes: m.notes, address_label: m.address_label, meeting_date: m.meeting_date?.slice(0, 16) || '', follow_up_date: (m.follow_up_date || '').slice(0, 10) }); setGps(m.lat && m.lng ? { lat: m.lat, lng: m.lng } : null); setPhotoPreview(m.photo_path); setPhotoFile(null); setShowModal(true); }}>Edit</button>
               <button className="btn-ghost text-xs px-2 py-1 text-red-500 hover:bg-red-50" onClick={() => setDeleteId(m.id)}>Delete</button>
             </div>
           </div>
@@ -207,6 +209,7 @@ export default function Meetings() {
             <div><label className="label">Outcome / Result</label><input className="input" value={form.outcome} onChange={e => setForm(f => ({ ...f, outcome: e.target.value }))} placeholder="e.g. Proposal agreed" /></div>
           </div>
           <div><label className="label">Notes</label><textarea className="input" rows={3} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} /></div>
+          <FollowUpPicker label="When to follow up" value={form.follow_up_date} onChange={follow_up_date => setForm(f => ({ ...f, follow_up_date }))} />
 
           {/* Photo */}
           <div className="border-2 border-dashed border-gray-200 rounded-xl p-4">
@@ -262,6 +265,7 @@ export default function Meetings() {
               <div><p className="text-xs text-gray-500">Segment</p><span className={`badge ${SEGMENT_COLORS[viewMeeting.segment]}`}>{viewMeeting.segment}</span></div>
               <div><p className="text-xs text-gray-500">Purpose</p><p className="font-medium">{viewMeeting.purpose}</p></div>
               <div><p className="text-xs text-gray-500">Date</p><p className="font-medium">{formatDateTime(viewMeeting.meeting_date)}</p></div>
+              <div><p className="text-xs text-gray-500">Follow-up</p><p className="font-medium">{viewMeeting.follow_up_date ? formatDate(viewMeeting.follow_up_date) : '—'}</p></div>
               <div><p className="text-xs text-gray-500">Sales Rep</p><p className="font-medium">{viewMeeting.user_name}</p></div>
             </div>
             {viewMeeting.outcome && <div><p className="text-xs text-gray-500 mb-1">Outcome</p><p className="bg-gray-50 rounded-lg p-3 text-sm">{viewMeeting.outcome}</p></div>}

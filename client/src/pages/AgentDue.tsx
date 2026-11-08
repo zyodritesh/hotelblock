@@ -4,6 +4,7 @@ import {
   ACTIVITY_TYPES, ACTIVITY_OUTCOMES, DUE_STATUS_CONFIG,
   TIER_CONFIG, overdueUrgencyColor, formatDate, todayISO, addDaysISO
 } from '../lib/utils';
+import FollowUpPicker from '../components/FollowUpPicker';
 
 const API = '/api';
 
@@ -314,11 +315,7 @@ export default function AgentDue() {
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Contact date</label>
                 <input type="date" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={logForm.contacted_at} onChange={e => setLogForm(f => ({ ...f, contacted_at: e.target.value }))} />
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Next due *</label>
-                <input type="date" required className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={logForm.next_due_date} onChange={e => setLogForm(f => ({ ...f, next_due_date: e.target.value }))} />
-                <p className="text-xs text-gray-400 mt-1">Choose the next follow-up from the calendar. Time is not saved.</p>
-              </div>
+              <FollowUpPicker label="When to follow up *" value={logForm.next_due_date} onChange={next_due_date => setLogForm(f => ({ ...f, next_due_date }))} />
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label>
                 <textarea className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" rows={3} placeholder="What was discussed? Any follow-up actions?" value={logForm.notes} onChange={e => setLogForm(f => ({ ...f, notes: e.target.value }))} />

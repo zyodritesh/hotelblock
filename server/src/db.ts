@@ -392,6 +392,7 @@ export function initDb() {
     "ALTER TABLE properties ADD COLUMN website TEXT",
     "ALTER TABLE properties ADD COLUMN brand_color TEXT NOT NULL DEFAULT '#2563eb'",
     "ALTER TABLE proposals ADD COLUMN terms TEXT DEFAULT ''",
+    "ALTER TABLE meetings ADD COLUMN follow_up_date TEXT",
   ];
 
   for (const sql of migrations) {

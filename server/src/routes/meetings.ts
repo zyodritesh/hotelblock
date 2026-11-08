@@ -34,16 +34,17 @@ router.get('/', (req: AuthRequest, res: Response) => {
 });
 
 router.post('/', upload.single('photo'), (req: AuthRequest, res: Response) => {
-  const { contact_name, company, contact_id, segment, purpose, outcome, notes, lat, lng, address_label, meeting_date } = req.body;
+  const { contact_name, company, contact_id, segment, purpose, outcome, notes, lat, lng, address_label, meeting_date, follow_up_date } = req.body;
   if (!segment) return res.status(400).json({ error: 'segment required' });
   const id = uuidv4();
   const photo_path = req.file ? `/uploads/${req.file.filename}` : null;
-  db.prepare(`INSERT INTO meetings (id,contact_id,contact_name,company,user_id,segment,purpose,outcome,notes,photo_path,lat,lng,address_label,meeting_date)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+  const followUp = /^\d{4}-\d{2}-\d{2}/.test(String(follow_up_date || '')) ? String(follow_up_date).slice(0, 10) : null;
+  db.prepare(`INSERT INTO meetings (id,contact_id,contact_name,company,user_id,segment,purpose,outcome,notes,photo_path,lat,lng,address_label,meeting_date,follow_up_date)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     id, contact_id||null, contact_name||'', company||'', req.user!.id, segment,
     purpose||'', outcome||'', notes||'', photo_path,
     lat ? parseFloat(lat) : null, lng ? parseFloat(lng) : null, address_label||'',
-    meeting_date || new Date().toISOString()
+    meeting_date || new Date().toISOString(), followUp
   );
   return res.status(201).json(db.prepare('SELECT * FROM meetings WHERE id=?').get(id));
 });
@@ -52,13 +53,14 @@ router.put('/:id', upload.single('photo'), (req: AuthRequest, res: Response) => 
   const meeting = db.prepare('SELECT * FROM meetings WHERE id=?').get(req.params.id) as any;
   if (!meeting) return res.status(404).json({ error: 'Not found' });
   if (req.user!.role === 'executive' && meeting.user_id !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
-  const { contact_name, company, segment, purpose, outcome, notes, lat, lng, address_label, meeting_date } = req.body;
+  const { contact_name, company, segment, purpose, outcome, notes, lat, lng, address_label, meeting_date, follow_up_date } = req.body;
   const photo_path = req.file ? `/uploads/${req.file.filename}` : meeting.photo_path;
-  db.prepare(`UPDATE meetings SET contact_name=?,company=?,segment=?,purpose=?,outcome=?,notes=?,photo_path=?,lat=?,lng=?,address_label=?,meeting_date=? WHERE id=?`).run(
+  const followUp = follow_up_date === undefined ? meeting.follow_up_date : (/^\d{4}-\d{2}-\d{2}/.test(String(follow_up_date || '')) ? String(follow_up_date).slice(0, 10) : null);
+  db.prepare(`UPDATE meetings SET contact_name=?,company=?,segment=?,purpose=?,outcome=?,notes=?,photo_path=?,lat=?,lng=?,address_label=?,meeting_date=?,follow_up_date=? WHERE id=?`).run(
     contact_name??meeting.contact_name, company??meeting.company, segment??meeting.segment,
     purpose??meeting.purpose, outcome??meeting.outcome, notes??meeting.notes, photo_path,
     lat ? parseFloat(lat) : meeting.lat, lng ? parseFloat(lng) : meeting.lng,
-    address_label??meeting.address_label, meeting_date??meeting.meeting_date, req.params.id
+    address_label??meeting.address_label, meeting_date??meeting.meeting_date, followUp, req.params.id
   );
   return res.json(db.prepare('SELECT * FROM meetings WHERE id=?').get(req.params.id));
 });

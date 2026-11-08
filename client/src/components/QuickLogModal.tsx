@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuthStore } from '../store/auth';
 import { SEGMENTS, CALL_OUTCOMES, CALL_TYPES } from '../lib/utils';
+import FollowUpPicker from './FollowUpPicker';
 
 interface Props {
   onClose: () => void;
@@ -104,11 +105,7 @@ export default function QuickLogModal({ onClose, onSaved }: Props) {
             onChange={e => set('notes', e.target.value)}
           />
 
-          {/* Follow-up date */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 whitespace-nowrap">Follow-up:</span>
-            <input type="date" className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:border-blue-400 focus:outline-none" value={form.next_action_date} onChange={e => set('next_action_date', e.target.value)} />
-          </div>
+          <FollowUpPicker label="When to follow up" value={form.next_action_date} onChange={d => set('next_action_date', d)} />
 
           {/* Save button */}
           <button

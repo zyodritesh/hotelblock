@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuthStore } from '../store/auth';
 import Pagination from '../components/Pagination';
+import FollowUpPicker from '../components/FollowUpPicker';
 import {
   AGENT_TYPES, AGENT_SPECIALIZATIONS, AGENT_TIERS, AGENT_STATUSES,
   FOLLOW_UP_FREQUENCIES, ACTIVITY_TYPES, ACTIVITY_OUTCOMES,
@@ -363,9 +364,8 @@ export default function Agents() {
                   </select>
                 </div>
               )}
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Next due</label>
-                <input type="date" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={form.next_due_date} onChange={e => setForm(f => ({ ...f, next_due_date: e.target.value }))} />
+              <div className="sm:col-span-2">
+                <FollowUpPicker label="When to follow up" value={form.next_due_date} onChange={next_due_date => setForm(f => ({ ...f, next_due_date }))} />
               </div>
               <div className="sm:col-span-2">
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label>
@@ -419,11 +419,9 @@ export default function Agents() {
                 <div className="bg-blue-50 rounded-xl p-4 space-y-2">
                   <div className="flex justify-between"><span className="text-xs text-gray-500">Frequency</span><span className="text-sm font-semibold text-blue-700">{detailAgent.frequency || 'Not set'}</span></div>
                   <div className="flex justify-between"><span className="text-xs text-gray-500">Last Contact</span><span className="text-sm">{formatDate(detailAgent.last_contact_date)}</span></div>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs text-gray-500">Next Due</span>
-                    <input type="date" className="border border-blue-200 rounded-lg px-2 py-1 text-sm" value={(detailAgent.next_due_date || '').slice(0, 10)}
-                      onChange={async e => {
-                        const next_due_date = e.target.value;
+                  <div>
+                    <FollowUpPicker label="Next due" value={(detailAgent.next_due_date || '').slice(0, 10)}
+                      onChange={async next_due_date => {
                         await fetch(`${API}/agents/${detailAgent.id}`, { method: 'PUT', headers: headers(), body: JSON.stringify({ next_due_date }) });
                         setDetailAgent(prev => prev ? { ...prev, next_due_date } : prev);
                         load();
@@ -495,11 +493,7 @@ export default function Agents() {
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Contact date</label>
                 <input type="date" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={logForm.contacted_at} onChange={e => setLogForm(f => ({ ...f, contacted_at: e.target.value }))} />
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Next due *</label>
-                <input type="date" required className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={logForm.next_due_date} onChange={e => setLogForm(f => ({ ...f, next_due_date: e.target.value }))} />
-                <p className="text-xs text-gray-400 mt-1">Pick the calendar date. No time is stored.</p>
-              </div>
+              <FollowUpPicker label="When to follow up *" value={logForm.next_due_date} onChange={next_due_date => setLogForm(f => ({ ...f, next_due_date }))} />
               <div>
                 <label className="block text-xs font-semibold text-gray-600 mb-1">Notes</label>
                 <textarea className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" rows={3} placeholder="What was discussed? Any follow-up actions?" value={logForm.notes} onChange={e => setLogForm(f => ({ ...f, notes: e.target.value }))} />
