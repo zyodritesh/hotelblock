@@ -18,7 +18,15 @@ export default function FollowUpPicker({
 }) {
   const day = (value || '').slice(0, 10);
   const today = todayISO();
-  const matched = PRESETS.find(p => day && addDaysISO(today, p.days) === day)?.id;
+  const past = Boolean(day) && day < today;
+  const shown = past ? '' : day;
+  const matched = PRESETS.find(p => shown && addDaysISO(today, p.days) === shown)?.id;
+
+  const pick = (next: string) => {
+    if (!next) { onChange(''); return; }
+    if (next < today) return;
+    onChange(next);
+  };
 
   return (
     <div>
@@ -28,7 +36,7 @@ export default function FollowUpPicker({
           <button
             type="button"
             key={p.id}
-            onClick={() => onChange(addDaysISO(today, p.days))}
+            onClick={() => pick(addDaysISO(today, p.days))}
             className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors ${matched === p.id ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:border-blue-300'}`}
           >
             {p.label}
@@ -38,11 +46,16 @@ export default function FollowUpPicker({
       <input
         type="date"
         className="input"
-        value={day}
-        onChange={e => onChange(e.target.value)}
+        min={today}
+        value={shown}
+        onChange={e => pick(e.target.value)}
       />
-      <p className="text-xs text-gray-400 mt-1">
-        {day ? `Follow up on ${formatDate(day)}. No time is saved.` : 'Pick Daily, Weekly, 15 days, 30 days, or choose a date.'}
+      <p className={`text-xs mt-1 ${past ? 'text-amber-700' : 'text-gray-400'}`}>
+        {past
+          ? `Current date ${formatDate(day)} is before today. Choose today or a later date.`
+          : shown
+            ? `Follow up on ${formatDate(shown)}. Today or later only.`
+            : 'Pick Daily, Weekly, 15 days, 30 days, or a date from today onward.'}
       </p>
     </div>
   );

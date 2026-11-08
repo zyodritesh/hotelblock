@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../db';
 import { authenticate, denyUnlessOwner, AuthRequest } from '../middleware/auth';
+import { followUpDate, todayISO as todayLocal } from '../dates';
 
 const router = Router();
 router.use(authenticate);
@@ -184,7 +185,9 @@ router.post('/', (req: AuthRequest, res: Response) => {
   const freq = frequency || 'Monthly';
   const freqDays = FREQUENCY_DAYS[freq] || 30;
   const fid = uuidv4();
-  const nextDue = (req.body.next_due_date || '').toString().slice(0, 10) || null;
+  const parsedDue = followUpDate(req.body.next_due_date);
+  if (parsedDue.error) return res.status(400).json({ error: parsedDue.error });
+  const nextDue = parsedDue.date;
   db.prepare('INSERT INTO agent_followups (id,agent_id,user_id,frequency,frequency_days,next_due_date,created_at) VALUES (?,?,?,?,?,?,?)').run(
     fid, id, req.user!.role === 'executive' ? req.user!.id : (assigned_to || req.user!.id), freq, freqDays, nextDue, now
   );
@@ -200,6 +203,15 @@ router.put('/:id', (req: AuthRequest, res: Response) => {
   if (denyUnlessOwner(req, res, agent.assigned_to)) return;
   const { name, agency_name, type, country, city, phone, email, website, specialization, tier, status, assigned_to, property_id, notes, frequency, next_due_date } = req.body;
   const assignee = req.user!.role === 'executive' ? req.user!.id : (assigned_to ?? agent.assigned_to);
+  if (next_due_date) {
+    const due = String(next_due_date).slice(0, 10);
+    const existingDue = db.prepare('SELECT next_due_date FROM agent_followups WHERE agent_id=?').get(req.params.id) as any;
+    const unchanged = existingDue && String(existingDue.next_due_date || '').slice(0, 10) === due;
+    if (!unchanged) {
+      const parsed = followUpDate(due);
+      if (parsed.error) return res.status(400).json({ error: parsed.error });
+    }
+  }
   db.prepare(`UPDATE agents SET name=?,agency_name=?,type=?,country=?,city=?,phone=?,email=?,website=?,specialization=?,tier=?,status=?,assigned_to=?,property_id=?,notes=? WHERE id=?`).run(
     name??agent.name, agency_name??agent.agency_name, type??agent.type, country??agent.country, city??agent.city,
     phone??agent.phone, email??agent.email, website??agent.website, specialization??agent.specialization,
@@ -223,6 +235,7 @@ router.put('/:id', (req: AuthRequest, res: Response) => {
       let nextDue = existing.next_due_date;
       if (!next_due_date && existing.last_contact_date) {
         nextDue = addDays(String(existing.last_contact_date).slice(0, 10), freqDays);
+        if (nextDue < todayLocal()) nextDue = todayLocal();
       }
       db.prepare('UPDATE agent_followups SET frequency=?,frequency_days=?,next_due_date=? WHERE agent_id=?').run(frequency, freqDays, nextDue, req.params.id);
     } else {
@@ -253,6 +266,11 @@ router.post('/:id/log', (req: AuthRequest, res: Response) => {
 
   const { type, outcome, notes, contacted_at, next_due_date } = req.body;
   if (!type) return res.status(400).json({ error: 'type required' });
+  const chosenDue = (next_due_date || '').toString().slice(0, 10);
+  if (chosenDue) {
+    const parsed = followUpDate(chosenDue);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+  }
 
   const logId = uuidv4();
   const contactedDay = (contacted_at || todayISO()).toString().slice(0, 10);
@@ -262,10 +280,10 @@ router.post('/:id/log', (req: AuthRequest, res: Response) => {
   );
 
   const followup = db.prepare('SELECT * FROM agent_followups WHERE agent_id=?').get(req.params.id) as any;
-  const chosenDue = (next_due_date || '').toString().slice(0, 10);
-  const nextDueStr = /^\d{4}-\d{2}-\d{2}$/.test(chosenDue)
+  let nextDueStr = /^\d{4}-\d{2}-\d{2}$/.test(chosenDue)
     ? chosenDue
     : addDays(contactedDay, followup?.frequency_days || 30);
+  if (nextDueStr < todayLocal()) nextDueStr = todayLocal();
   if (followup) {
     db.prepare('UPDATE agent_followups SET last_contact_date=?,next_due_date=? WHERE agent_id=?').run(contactedDay, nextDueStr, req.params.id);
   } else {

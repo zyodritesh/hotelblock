@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import db from '../db';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { followUpDate } from '../dates';
 
 const uploadDir = path.join(__dirname, '../../../uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
@@ -38,7 +39,9 @@ router.post('/', upload.single('photo'), (req: AuthRequest, res: Response) => {
   if (!segment) return res.status(400).json({ error: 'segment required' });
   const id = uuidv4();
   const photo_path = req.file ? `/uploads/${req.file.filename}` : null;
-  const followUp = /^\d{4}-\d{2}-\d{2}/.test(String(follow_up_date || '')) ? String(follow_up_date).slice(0, 10) : null;
+  const parsedFollow = followUpDate(follow_up_date);
+  if (parsedFollow.error) return res.status(400).json({ error: parsedFollow.error });
+  const followUp = parsedFollow.date;
   db.prepare(`INSERT INTO meetings (id,contact_id,contact_name,company,user_id,segment,purpose,outcome,notes,photo_path,lat,lng,address_label,meeting_date,follow_up_date)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     id, contact_id||null, contact_name||'', company||'', req.user!.id, segment,
@@ -55,7 +58,15 @@ router.put('/:id', upload.single('photo'), (req: AuthRequest, res: Response) => 
   if (req.user!.role === 'executive' && meeting.user_id !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
   const { contact_name, company, segment, purpose, outcome, notes, lat, lng, address_label, meeting_date, follow_up_date } = req.body;
   const photo_path = req.file ? `/uploads/${req.file.filename}` : meeting.photo_path;
-  const followUp = follow_up_date === undefined ? meeting.follow_up_date : (/^\d{4}-\d{2}-\d{2}/.test(String(follow_up_date || '')) ? String(follow_up_date).slice(0, 10) : null);
+  let followUp = meeting.follow_up_date;
+  if (follow_up_date !== undefined) {
+    const same = String(follow_up_date || '').slice(0, 10) === String(meeting.follow_up_date || '').slice(0, 10);
+    if (!same) {
+      const parsedFollow = followUpDate(follow_up_date);
+      if (parsedFollow.error) return res.status(400).json({ error: parsedFollow.error });
+      followUp = parsedFollow.date;
+    }
+  }
   db.prepare(`UPDATE meetings SET contact_name=?,company=?,segment=?,purpose=?,outcome=?,notes=?,photo_path=?,lat=?,lng=?,address_label=?,meeting_date=?,follow_up_date=? WHERE id=?`).run(
     contact_name??meeting.contact_name, company??meeting.company, segment??meeting.segment,
     purpose??meeting.purpose, outcome??meeting.outcome, notes??meeting.notes, photo_path,

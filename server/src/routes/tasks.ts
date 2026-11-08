@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../db';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { followUpDate } from '../dates';
 
 const router = Router();
 router.use(authenticate);
@@ -20,9 +21,11 @@ router.get('/', (req: AuthRequest, res: Response) => {
 router.post('/', (req: AuthRequest, res: Response) => {
   const { lead_id, call_id, title, due_date, user_id } = req.body;
   if (!title) return res.status(400).json({ error: 'title required' });
+  const parsedDue = followUpDate(due_date);
+  if (parsedDue.error) return res.status(400).json({ error: parsedDue.error });
   const id = uuidv4();
   const assignTo = (req.user!.role !== 'executive' && user_id) ? user_id : req.user!.id;
-  db.prepare('INSERT INTO tasks (id,lead_id,call_id,user_id,title,due_date) VALUES (?,?,?,?,?,?)').run(id, lead_id||null, call_id||null, assignTo, title, due_date||null);
+  db.prepare('INSERT INTO tasks (id,lead_id,call_id,user_id,title,due_date) VALUES (?,?,?,?,?,?)').run(id, lead_id||null, call_id||null, assignTo, title, parsedDue.date);
   return res.status(201).json(db.prepare('SELECT * FROM tasks WHERE id=?').get(id));
 });
 
@@ -31,7 +34,16 @@ router.put('/:id', (req: AuthRequest, res: Response) => {
   if (!task) return res.status(404).json({ error: 'Not found' });
   if (req.user!.role === 'executive' && task.user_id !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
   const { title, due_date, completed } = req.body;
-  db.prepare('UPDATE tasks SET title=?,due_date=?,completed=? WHERE id=?').run(title??task.title, due_date??task.due_date, completed!==undefined?(completed?1:0):task.completed, req.params.id);
+  let due = task.due_date;
+  if (due_date !== undefined) {
+    const same = String(due_date || '').slice(0, 10) === String(task.due_date || '').slice(0, 10);
+    if (!same) {
+      const parsedDue = followUpDate(due_date);
+      if (parsedDue.error) return res.status(400).json({ error: parsedDue.error });
+      due = parsedDue.date;
+    }
+  }
+  db.prepare('UPDATE tasks SET title=?,due_date=?,completed=? WHERE id=?').run(title??task.title, due, completed!==undefined?(completed?1:0):task.completed, req.params.id);
   return res.json(db.prepare('SELECT * FROM tasks WHERE id=?').get(req.params.id));
 });
 

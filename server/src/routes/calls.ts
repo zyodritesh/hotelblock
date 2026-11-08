@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../db';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { followUpDate } from '../dates';
 
 const router = Router();
 router.use(authenticate);
@@ -25,11 +26,13 @@ router.get('/', (req: AuthRequest, res: Response) => {
 router.post('/', (req: AuthRequest, res: Response) => {
   const { contact_id, contact_name, company, phone, segment, call_type, duration_min, outcome, notes, next_action, next_action_date } = req.body;
   if (!segment || !call_type || !outcome) return res.status(400).json({ error: 'segment, call_type, outcome required' });
+  const parsedFollow = followUpDate(next_action_date);
+  if (parsedFollow.error) return res.status(400).json({ error: parsedFollow.error });
   const id = uuidv4();
   db.prepare(`INSERT INTO calls (id,contact_id,contact_name,company,phone,user_id,segment,call_type,duration_min,outcome,notes,next_action,next_action_date)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, contact_id||null, contact_name||'', company||'', phone||'', req.user!.id, segment, call_type, duration_min||0, outcome, notes||'', next_action||'', next_action_date||null);
-  if (next_action && next_action_date) {
-    db.prepare('INSERT INTO tasks (id,call_id,user_id,title,due_date) VALUES (?,?,?,?,?)').run(uuidv4(), id, req.user!.id, next_action, next_action_date);
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, contact_id||null, contact_name||'', company||'', phone||'', req.user!.id, segment, call_type,     duration_min||0, outcome, notes||'', next_action||'', parsedFollow.date);
+  if (next_action && parsedFollow.date) {
+    db.prepare('INSERT INTO tasks (id,call_id,user_id,title,due_date) VALUES (?,?,?,?,?)').run(uuidv4(), id, req.user!.id, next_action, parsedFollow.date);
   }
   const row = db.prepare('SELECT * FROM calls WHERE id=?').get(id);
   return res.status(201).json(row);
@@ -40,9 +43,18 @@ router.put('/:id', (req: AuthRequest, res: Response) => {
   if (!call) return res.status(404).json({ error: 'Not found' });
   if (req.user!.role === 'executive' && call.user_id !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
   const { contact_name, company, phone, segment, call_type, duration_min, outcome, notes, next_action, next_action_date } = req.body;
+  let nextDate = call.next_action_date;
+  if (next_action_date !== undefined) {
+    const same = String(next_action_date || '').slice(0, 10) === String(call.next_action_date || '').slice(0, 10);
+    if (!same) {
+      const parsedFollow = followUpDate(next_action_date);
+      if (parsedFollow.error) return res.status(400).json({ error: parsedFollow.error });
+      nextDate = parsedFollow.date;
+    }
+  }
   db.prepare(`UPDATE calls SET contact_name=?,company=?,phone=?,segment=?,call_type=?,duration_min=?,outcome=?,notes=?,next_action=?,next_action_date=? WHERE id=?`).run(
     contact_name??call.contact_name, company??call.company, phone??call.phone, segment??call.segment, call_type??call.call_type,
-    duration_min??call.duration_min, outcome??call.outcome, notes??call.notes, next_action??call.next_action, next_action_date??call.next_action_date, req.params.id
+    duration_min??call.duration_min, outcome??call.outcome, notes??call.notes, next_action??call.next_action, nextDate, req.params.id
   );
   return res.json(db.prepare('SELECT * FROM calls WHERE id=?').get(req.params.id));
 });
