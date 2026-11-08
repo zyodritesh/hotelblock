@@ -421,10 +421,11 @@ export default function Agents() {
                   <div className="flex justify-between"><span className="text-xs text-gray-500">Last Contact</span><span className="text-sm">{formatDate(detailAgent.last_contact_date)}</span></div>
                   <div>
                     <FollowUpPicker label="Next due" value={(detailAgent.next_due_date || '').slice(0, 10)}
-                      onChange={async next_due_date => {
-                        await fetch(`${API}/agents/${detailAgent.id}`, { method: 'PUT', headers: headers(), body: JSON.stringify({ next_due_date }) });
-                        setDetailAgent(prev => prev ? { ...prev, next_due_date } : prev);
-                        load();
+                      onChange={next_due_date => {
+                        const patch = { next_due_date, due_status: 'On Track', days_overdue: 0 };
+                        setDetailAgent(prev => prev ? { ...prev, ...patch } : prev);
+                        setAgents(prev => prev.map(a => a.id === detailAgent.id ? { ...a, ...patch } : a));
+                        fetch(`${API}/agents/${detailAgent.id}`, { method: 'PUT', headers: headers(), body: JSON.stringify({ next_due_date }) });
                       }} />
                   </div>
                   {detailAgent.days_overdue > 0 && <div className="text-xs text-red-600 font-medium">{detailAgent.days_overdue} day{detailAgent.days_overdue !== 1 ? 's' : ''} overdue</div>}
