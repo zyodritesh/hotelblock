@@ -4,7 +4,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import db from '../db';
-import { authenticate, denyUnlessOwner, AuthRequest } from '../middleware/auth';
+import { authenticate, denyUnlessOwner, ownScope, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 router.use(authenticate);
@@ -40,7 +40,7 @@ router.get('/', (req: AuthRequest, res: Response) => {
     LEFT JOIN properties pr ON p.property_id=pr.id
     WHERE 1=1`;
   const params: any[] = [];
-  if (req.user!.role === 'executive') { q += ' AND p.user_id = ?'; params.push(req.user!.id); }
+  if (ownScope(req.user!.role)) { q += ' AND p.user_id = ?'; params.push(req.user!.id); }
   else if (user_id) { q += ' AND p.user_id = ?'; params.push(user_id); }
   if (status) { q += ' AND p.status = ?'; params.push(status); }
   if (property_id) { q += ' AND p.property_id = ?'; params.push(property_id); }
@@ -90,7 +90,7 @@ router.post('/', (req: AuthRequest, res: Response) => {
 router.put('/:id', (req: AuthRequest, res: Response) => {
   const p = db.prepare('SELECT * FROM proposals WHERE id=?').get(req.params.id) as any;
   if (!p) return res.status(404).json({ error: 'Not found' });
-  if (req.user!.role === 'executive' && p.user_id !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
+  if (ownScope(req.user!.role) && p.user_id !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
   const {
     lead_id, property_id, title, status, client_name, client_company, client_phone, client_email,
     event_date, event_type, venue, pax, validity_date, payment_terms, cancellation_policy,
@@ -118,7 +118,7 @@ router.put('/:id', (req: AuthRequest, res: Response) => {
 router.post('/:id/photos', (req: AuthRequest, res: Response) => {
   const p = db.prepare('SELECT * FROM proposals WHERE id=?').get(req.params.id) as any;
   if (!p) return res.status(404).json({ error: 'Not found' });
-  if (req.user!.role === 'executive' && p.user_id !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
+  if (ownScope(req.user!.role) && p.user_id !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
 
   const uploader = makePhotoUpload(req.params.id);
   uploader.array('photos', 10)(req as any, res as any, (err: any) => {
@@ -147,7 +147,7 @@ router.delete('/:id/photos', (req: AuthRequest, res: Response) => {
 router.delete('/:id', (req: AuthRequest, res: Response) => {
   const p = db.prepare('SELECT * FROM proposals WHERE id=?').get(req.params.id) as any;
   if (!p) return res.status(404).json({ error: 'Not found' });
-  if (req.user!.role === 'executive' && p.user_id !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
+  if (ownScope(req.user!.role) && p.user_id !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
   db.prepare('DELETE FROM proposals WHERE id=?').run(req.params.id);
   return res.json({ success: true });
 });

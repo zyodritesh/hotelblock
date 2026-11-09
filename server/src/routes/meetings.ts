@@ -4,7 +4,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import db from '../db';
-import { authenticate, AuthRequest } from '../middleware/auth';
+import { authenticate, ownScope, AuthRequest } from '../middleware/auth';
 import { followUpDate } from '../dates';
 
 const uploadDir = path.join(__dirname, '../../../uploads');
@@ -23,7 +23,7 @@ router.get('/', (req: AuthRequest, res: Response) => {
   const { user_id, segment, from, to, search, limit = '50', offset = '0' } = req.query as Record<string, string>;
   let base = `FROM meetings m LEFT JOIN users u ON m.user_id = u.id WHERE 1=1`;
   const params: any[] = [];
-  if (req.user!.role === 'executive') { base += ' AND m.user_id = ?'; params.push(req.user!.id); }
+  if (ownScope(req.user!.role)) { base += ' AND m.user_id = ?'; params.push(req.user!.id); }
   else if (user_id) { base += ' AND m.user_id = ?'; params.push(user_id); }
   if (segment) { base += ' AND m.segment = ?'; params.push(segment); }
   if (from) { base += ' AND date(m.meeting_date) >= ?'; params.push(from); }
@@ -55,7 +55,7 @@ router.post('/', upload.single('photo'), (req: AuthRequest, res: Response) => {
 router.put('/:id', upload.single('photo'), (req: AuthRequest, res: Response) => {
   const meeting = db.prepare('SELECT * FROM meetings WHERE id=?').get(req.params.id) as any;
   if (!meeting) return res.status(404).json({ error: 'Not found' });
-  if (req.user!.role === 'executive' && meeting.user_id !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
+  if (ownScope(req.user!.role) && meeting.user_id !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
   const { contact_name, company, segment, purpose, outcome, notes, lat, lng, address_label, meeting_date, follow_up_date } = req.body;
   const photo_path = req.file ? `/uploads/${req.file.filename}` : meeting.photo_path;
   let followUp = meeting.follow_up_date;
@@ -79,7 +79,7 @@ router.put('/:id', upload.single('photo'), (req: AuthRequest, res: Response) => 
 router.delete('/:id', (req: AuthRequest, res: Response) => {
   const meeting = db.prepare('SELECT * FROM meetings WHERE id=?').get(req.params.id) as any;
   if (!meeting) return res.status(404).json({ error: 'Not found' });
-  if (req.user!.role === 'executive' && meeting.user_id !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
+  if (ownScope(req.user!.role) && meeting.user_id !== req.user!.id) return res.status(403).json({ error: 'Forbidden' });
   db.prepare('DELETE FROM meetings WHERE id=?').run(req.params.id);
   return res.json({ success: true });
 });

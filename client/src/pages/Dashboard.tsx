@@ -39,7 +39,7 @@ export default function Dashboard() {
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Good {getGreeting()}, {user?.name?.split(' ')[0]} 👋</h1>
           <p className="text-xs sm:text-sm text-gray-500 mt-1">{new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
           <p className="text-xs mt-1 font-medium text-blue-700">
-            {user?.role === 'executive' ? 'Access: your own calls, meetings, leads, proposals, and agents only.' : user?.role === 'manager' ? 'Access: every sales executive, plus your own records.' : 'Access: full team, including settings.'}
+            {user?.role === 'call_center' ? 'Access: your own calls and meetings. You can add a lead for anyone in the company.' : user?.role === 'executive' ? 'Access: your own calls, meetings, and proposals. Leads you own or created are visible to you.' : user?.role === 'manager' ? 'Access: every sales executive, plus your own records.' : 'Access: full team, including settings.'}
           </p>
         </div>
         <div className="flex gap-2">

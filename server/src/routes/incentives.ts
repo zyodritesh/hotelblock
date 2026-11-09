@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../db';
-import { authenticate, requireManagerOrAdmin, AuthRequest } from '../middleware/auth';
+import { authenticate, requireManagerOrAdmin, ownScope, AuthRequest } from '../middleware/auth';
 import { METRICS, actualsFor, scoreFrom, incentiveAmount } from '../incentiveMetrics';
 
 const router = Router();
@@ -66,8 +66,8 @@ router.get('/', (req: AuthRequest, res: Response) => {
   const peopleIds = people.map(p => p.id);
 
   let subject = req.user!.id;
-  if (req.user!.role !== 'executive' && req.query.user_id) subject = String(req.query.user_id);
-  if (req.user!.role === 'executive') subject = req.user!.id;
+  if (!ownScope(req.user!.role) && req.query.user_id) subject = String(req.query.user_id);
+  if (ownScope(req.user!.role)) subject = req.user!.id;
   const subjectUser = db.prepare('SELECT id, name, role FROM users WHERE id=?').get(subject) as any;
   if (!subjectUser) return res.status(404).json({ error: 'User not found' });
 
@@ -77,7 +77,7 @@ router.get('/', (req: AuthRequest, res: Response) => {
   const scorecard = scoreFrom(actualsFor(db, [subject], month), targetsFor('individual', subject, month));
   const teamScore = scoreFrom(actualsFor(db, peopleIds, month), targetsFor('team', null, month));
 
-  const visiblePeople = req.user!.role === 'executive' ? people.filter(p => p.id === req.user!.id) : people;
+  const visiblePeople = ownScope(req.user!.role) ? people.filter(p => p.id === req.user!.id) : people;
   const peopleSummary = visiblePeople.map(p => {
     const rows = db.prepare("SELECT status, amount FROM incentives WHERE scope='individual' AND user_id=? AND month=?").all(p.id, month) as any[];
     const scored = scoreFrom(actualsFor(db, [p.id], month), targetsFor('individual', p.id, month));
@@ -97,7 +97,7 @@ router.get('/', (req: AuthRequest, res: Response) => {
     LEFT JOIN users pu ON pu.id = i.paid_by
     WHERE 1=1`;
   const params: any[] = [];
-  if (req.user!.role === 'executive') {
+  if (ownScope(req.user!.role)) {
     q += " AND (i.user_id = ? OR i.scope = 'team')";
     params.push(req.user!.id);
   } else if (req.query.user_id) {
@@ -110,7 +110,7 @@ router.get('/', (req: AuthRequest, res: Response) => {
   q += ' ORDER BY i.created_at DESC LIMIT 300';
   const transactions = attachEvents(db.prepare(q).all(...params) as any[]);
 
-  const rules = req.user!.role === 'executive'
+  const rules = ownScope(req.user!.role)
     ? []
     : db.prepare('SELECT * FROM incentive_rules ORDER BY scope, name').all();
 

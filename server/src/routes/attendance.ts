@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../db';
-import { authenticate, requireAdmin, AuthRequest } from '../middleware/auth';
+import { authenticate, requireAdmin, ownScope, AuthRequest } from '../middleware/auth';
 
 function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371000;
@@ -18,7 +18,7 @@ router.get('/', (req: AuthRequest, res: Response) => {
   const { user_id, month } = req.query as Record<string, string>;
   let q = `SELECT a.*, u.name as user_name FROM attendance a LEFT JOIN users u ON a.user_id=u.id WHERE 1=1`;
   const params: any[] = [];
-  if (req.user!.role === 'executive') { q += ' AND a.user_id = ?'; params.push(req.user!.id); }
+  if (ownScope(req.user!.role)) { q += ' AND a.user_id = ?'; params.push(req.user!.id); }
   else if (user_id) { q += ' AND a.user_id = ?'; params.push(user_id); }
   if (month) { q += ' AND a.date LIKE ?'; params.push(`${month}%`); }
   q += ' ORDER BY a.date DESC';

@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../db';
-import { authenticate, requireManagerOrAdmin, AuthRequest } from '../middleware/auth';
+import { authenticate, requireManagerOrAdmin, ownScope, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 router.use(authenticate);
@@ -10,7 +10,7 @@ router.get('/', (req: AuthRequest, res: Response) => {
   const { user_id, month } = req.query as Record<string, string>;
   let q = `SELECT t.*, u.name as user_name FROM targets t LEFT JOIN users u ON t.user_id=u.id WHERE 1=1`;
   const params: any[] = [];
-  if (req.user!.role === 'executive') { q += ' AND t.user_id = ?'; params.push(req.user!.id); }
+  if (ownScope(req.user!.role)) { q += ' AND t.user_id = ?'; params.push(req.user!.id); }
   else if (user_id) { q += ' AND t.user_id = ?'; params.push(user_id); }
   if (month) { q += ' AND t.month = ?'; params.push(month); }
   q += ' ORDER BY t.month DESC, u.name';
@@ -36,7 +36,7 @@ router.get('/scores', (req: AuthRequest, res: Response) => {
   const { user_id, month } = req.query as Record<string, string>;
   let q = `SELECT r.*, u.name as user_name FROM review_scores r LEFT JOIN users u ON r.user_id=u.id WHERE 1=1`;
   const params: any[] = [];
-  if (req.user!.role === 'executive') { q += ' AND r.user_id = ?'; params.push(req.user!.id); }
+  if (ownScope(req.user!.role)) { q += ' AND r.user_id = ?'; params.push(req.user!.id); }
   else if (user_id) { q += ' AND r.user_id = ?'; params.push(user_id); }
   if (month) { q += ' AND r.month = ?'; params.push(month); }
   q += ' ORDER BY r.month DESC';

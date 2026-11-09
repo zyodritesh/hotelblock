@@ -55,6 +55,7 @@ export default function Login() {
               { label: 'Admin — everyone', email: 'admin@hotel.com', password: 'admin123' },
               { label: 'Sales manager — whole team', email: 'rahul@hotel.com', password: 'manager123' },
               { label: 'Sales executive — own data', email: 'priya@hotel.com', password: 'sales123' },
+              { label: 'Call center — assign leads', email: 'neha@hotel.com', password: 'call123' },
             ].map(demo => (
               <button key={demo.email} type="button" onClick={() => { setEmail(demo.email); setPassword(demo.password); }}
                 className="w-full text-left text-xs border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50">

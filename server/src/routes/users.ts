@@ -2,13 +2,18 @@ import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../db';
-import { authenticate, requireAdmin, AuthRequest } from '../middleware/auth';
+import { authenticate, requireAdmin, ownScope, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 router.use(authenticate);
 
+router.get('/directory', (_req: AuthRequest, res: Response) => {
+  const people = db.prepare('SELECT id, name, role FROM users WHERE active=1 ORDER BY name').all();
+  return res.json(people);
+});
+
 router.get('/', (req: AuthRequest, res: Response) => {
-  if (req.user!.role === 'executive') {
+  if (ownScope(req.user!.role)) {
     return res.json(db.prepare('SELECT id, name, email, role, active, created_at FROM users WHERE id=?').all(req.user!.id));
   }
   if (req.user!.role === 'manager') {

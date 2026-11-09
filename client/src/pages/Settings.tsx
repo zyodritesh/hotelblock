@@ -6,7 +6,8 @@ import ProposalTemplates from '../components/ProposalTemplates';
 
 interface User { id: string; name: string; email: string; role: string; active: number; }
 
-const ROLE_COLORS: Record<string, string> = { admin: 'bg-red-100 text-red-700', manager: 'bg-purple-100 text-purple-700', executive: 'bg-blue-100 text-blue-700' };
+const ROLE_COLORS: Record<string, string> = { admin: 'bg-red-100 text-red-700', manager: 'bg-purple-100 text-purple-700', executive: 'bg-blue-100 text-blue-700', call_center: 'bg-teal-100 text-teal-700' };
+const ROLE_LABELS: Record<string, string> = { admin: 'Admin', manager: 'Sales manager', executive: 'Sales executive', call_center: 'Call center' };
 
 export default function Settings() {
   const [users, setUsers] = useState<User[]>([]);
@@ -87,7 +88,7 @@ export default function Settings() {
                 <p className="font-medium text-gray-900">{u.name}</p>
                 <p className="text-sm text-gray-500">{u.email}</p>
               </div>
-              <span className={`badge capitalize ${ROLE_COLORS[u.role] || 'bg-gray-100 text-gray-600'}`}>{u.role}</span>
+              <span className={`badge ${ROLE_COLORS[u.role] || 'bg-gray-100 text-gray-600'}`}>{ROLE_LABELS[u.role] || u.role}</span>
               {!u.active && <span className="badge bg-gray-100 text-gray-500">Inactive</span>}
               <div className="flex gap-2">
                 <button className="btn-ghost text-sm px-3 py-1" onClick={() => openEdit(u)}>Edit</button>
@@ -107,6 +108,7 @@ export default function Settings() {
           <div><label className="label">Role</label>
             <select className="select" value={userForm.role} onChange={e => setUserForm(f => ({ ...f, role: e.target.value }))}>
               <option value="executive">Sales Executive</option>
+              <option value="call_center">Call Center</option>
               <option value="manager">Sales Manager</option>
               <option value="admin">Admin</option>
             </select>

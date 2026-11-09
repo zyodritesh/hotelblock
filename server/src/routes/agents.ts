@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../db';
-import { authenticate, denyUnlessOwner, AuthRequest } from '../middleware/auth';
+import { authenticate, denyUnlessOwner, ownScope, AuthRequest } from '../middleware/auth';
 import { followUpDate, todayISO as todayLocal } from '../dates';
 
 const router = Router();
@@ -71,7 +71,7 @@ router.get('/', (req: AuthRequest, res: Response) => {
     LEFT JOIN agent_followups af ON af.agent_id = a.id
     WHERE a.status != 'Deleted'`;
   const params: any[] = [];
-  if (req.user!.role === 'executive') { where += ' AND a.assigned_to = ?'; params.push(req.user!.id); }
+  if (ownScope(req.user!.role)) { where += ' AND a.assigned_to = ?'; params.push(req.user!.id); }
   else if (assigned_to) { where += ' AND a.assigned_to = ?'; params.push(assigned_to); }
   if (search) { where += ' AND (a.name LIKE ? OR a.agency_name LIKE ? OR a.city LIKE ? OR a.country LIKE ?)'; const s = `%${search}%`; params.push(s, s, s, s); }
   if (type) { where += ' AND a.type = ?'; params.push(type); }
@@ -103,7 +103,7 @@ router.get('/due-today', (req: AuthRequest, res: Response) => {
   const userId = req.user!.id;
   const role = req.user!.role;
 
-  const userFilter = role === 'executive' ? `AND a.assigned_to = '${userId}'` : '';
+  const userFilter = ownScope(role) ? `AND a.assigned_to = '${userId}'` : '';
   const rows = db.prepare(`
     SELECT a.*, u.name as assigned_name,
       af.frequency, af.frequency_days, af.last_contact_date, af.next_due_date, af.id as followup_id
@@ -130,7 +130,7 @@ router.get('/compliance', (req: AuthRequest, res: Response) => {
   const monthStart = new Date().toISOString().slice(0, 7) + '-01';
   const today = new Date().toISOString().slice(0, 10);
 
-  const users = role === 'executive'
+  const users = ownScope(role)
     ? db.prepare('SELECT id, name FROM users WHERE id=?').all(userId)
     : db.prepare('SELECT id, name FROM users WHERE active=1').all();
 
@@ -179,7 +179,7 @@ router.post('/', (req: AuthRequest, res: Response) => {
   db.prepare(`INSERT INTO agents (id,name,agency_name,type,country,city,phone,email,website,specialization,tier,status,assigned_to,property_id,notes,created_by,created_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     id, name, agency_name||'', type||'Travel Agent', country||'', city||'', phone||'', email||'', website||'', specialization||'', tier||'B', status||'Active',
-    req.user!.role === 'executive' ? req.user!.id : (assigned_to || req.user!.id), property_id||null, notes||'', req.user!.id, now
+    ownScope(req.user!.role) ? req.user!.id : (assigned_to || req.user!.id), property_id||null, notes||'', req.user!.id, now
   );
   // Set up followup cadence
   const freq = frequency || 'Monthly';
@@ -189,7 +189,7 @@ router.post('/', (req: AuthRequest, res: Response) => {
   if (parsedDue.error) return res.status(400).json({ error: parsedDue.error });
   const nextDue = parsedDue.date;
   db.prepare('INSERT INTO agent_followups (id,agent_id,user_id,frequency,frequency_days,next_due_date,created_at) VALUES (?,?,?,?,?,?,?)').run(
-    fid, id, req.user!.role === 'executive' ? req.user!.id : (assigned_to || req.user!.id), freq, freqDays, nextDue, now
+    fid, id, ownScope(req.user!.role) ? req.user!.id : (assigned_to || req.user!.id), freq, freqDays, nextDue, now
   );
   const agent = db.prepare('SELECT * FROM agents WHERE id=?').get(id) as any;
   const followup = db.prepare('SELECT * FROM agent_followups WHERE agent_id=?').get(id) as any;
@@ -202,7 +202,7 @@ router.put('/:id', (req: AuthRequest, res: Response) => {
   if (!agent) return res.status(404).json({ error: 'Not found' });
   if (denyUnlessOwner(req, res, agent.assigned_to)) return;
   const { name, agency_name, type, country, city, phone, email, website, specialization, tier, status, assigned_to, property_id, notes, frequency, next_due_date } = req.body;
-  const assignee = req.user!.role === 'executive' ? req.user!.id : (assigned_to ?? agent.assigned_to);
+  const assignee = ownScope(req.user!.role) ? req.user!.id : (assigned_to ?? agent.assigned_to);
   if (next_due_date) {
     const due = String(next_due_date).slice(0, 10);
     const existingDue = db.prepare('SELECT next_due_date FROM agent_followups WHERE agent_id=?').get(req.params.id) as any;

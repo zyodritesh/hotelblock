@@ -1,22 +1,70 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { api } from '../api/client';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Pagination from '../components/Pagination';
-import { formatCurrency, formatDate, SEGMENTS, PIPELINE_STAGES, SEGMENT_COLORS, STAGE_COLORS, cn, exportCSV } from '../lib/utils';
+import { formatCurrency, formatDate, SEGMENTS, PIPELINE_STAGES, SEGMENT_COLORS, STAGE_COLORS, cn, exportCSV, roleLabel } from '../lib/utils';
 import { useAuthStore } from '../store/auth';
 
+interface Person { id: string; name: string; role: string; }
 interface Lead {
   id: string; title: string; segment: string; stage: string; estimated_revenue: number;
   event_date: string | null; room_nights: number; pax: number; notes: string;
-  user_id: string; user_name: string; account_name: string; contact_name: string;
+  user_id: string; user_name: string; account_id?: string | null; contact_id?: string | null;
+  account_name: string; contact_name: string;
+  created_by?: string | null; created_by_name?: string | null;
+  owners?: Person[];
   created_at: string; updated_at: string;
 }
 
-const EMPTY_FORM = { title: '', segment: 'Rooms', stage: 'Prospect', estimated_revenue: 0, event_date: '', room_nights: 0, pax: 0, notes: '', account_id: '', contact_id: '' };
+const EMPTY_FORM = { title: '', segment: 'Rooms', stage: 'Prospect', estimated_revenue: 0, event_date: '', room_nights: 0, pax: 0, notes: '', account_id: '', contact_id: '', owner_ids: [] as string[] };
+
+function ownerNames(lead: Lead) {
+  if (lead.owners?.length) return lead.owners.map(o => o.id === lead.user_id ? `${o.name} (primary)` : o.name).join(', ');
+  return lead.user_name || '';
+}
+
+function OwnerPicker({ people, value, onChange }: { people: Person[]; value: string[]; onChange: (ids: string[]) => void }) {
+  const [q, setQ] = useState('');
+  const selected = value.map(id => people.find(p => p.id === id)).filter((p): p is Person => !!p);
+  const filtered = people.filter(p => `${p.name} ${roleLabel(p.role)}`.toLowerCase().includes(q.trim().toLowerCase()));
+  const toggle = (id: string) => onChange(value.includes(id) ? value.filter(x => x !== id) : [...value, id]);
+  const makePrimary = (id: string) => onChange([id, ...value.filter(x => x !== id)]);
+  return (
+    <div>
+      <label className="label">Lead owners *</label>
+      <p className="text-xs text-gray-500 mb-2">Pick one or more people in the company. The first owner is primary for targets and revenue. Each new owner is notified.</p>
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {selected.map((p, i) => (
+            <span key={p.id} className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs ${i === 0 ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-700'}`}>
+              {p.name}{i === 0 ? ' · Primary' : ''}
+              {i > 0 && <button type="button" className="underline" onClick={() => makePrimary(p.id)}>Make primary</button>}
+              <button type="button" className="text-gray-500 hover:text-red-600" onClick={() => toggle(p.id)} aria-label={`Remove ${p.name}`}>×</button>
+            </span>
+          ))}
+        </div>
+      )}
+      <input className="input mb-2" placeholder="Search colleagues" value={q} onChange={e => setQ(e.target.value)} />
+      <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-lg">
+        {filtered.map(p => (
+          <label key={p.id} className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer">
+            <input type="checkbox" checked={value.includes(p.id)} onChange={() => toggle(p.id)} />
+            <span className="flex-1">{p.name}</span>
+            <span className="text-xs text-gray-400">{roleLabel(p.role)}</span>
+          </label>
+        ))}
+        {filtered.length === 0 && <p className="px-3 py-3 text-xs text-gray-400">No matching people.</p>}
+      </div>
+    </div>
+  );
+}
 
 export default function Pipeline() {
-  const { isManager } = useAuthStore();
+  const { user } = useAuthStore();
+  const location = useLocation();
+  const openedLead = useRef<string | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -28,12 +76,12 @@ export default function Pipeline() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'kanban' | 'table'>('kanban');
   const [filters, setFilters] = useState({ segment: '', stage: '', user_id: '' });
-  const [users, setUsers] = useState<any[]>([]);
+  const [people, setPeople] = useState<Person[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
   const [dragging, setDragging] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const loadLeads = useCallback(async (p = page, ps = pageSize) => {
     setLoading(true);
@@ -56,18 +104,41 @@ export default function Pipeline() {
   useEffect(() => {
     api.get<any>('/accounts?limit=500').then(r => setAccounts(r.data ?? r));
     api.get<any>('/contacts?limit=500').then(r => setContacts(r.data ?? r));
-    if (isManager()) api.get<any[]>('/users').then(setUsers);
+    api.get<Person[]>('/users/directory').then(setPeople).catch(() => {});
   }, []);
 
-  const openCreate = () => { setEditing(null); setForm({ ...EMPTY_FORM }); setShowModal(true); };
+  const openCreate = () => {
+    setEditing(null);
+    setForm({ ...EMPTY_FORM, owner_ids: user?.id ? [user.id] : [] });
+    setShowModal(true);
+  };
   const openEdit = (lead: Lead) => {
     setEditing(lead);
-    setForm({ title: lead.title, segment: lead.segment, stage: lead.stage, estimated_revenue: lead.estimated_revenue, event_date: lead.event_date || '', room_nights: lead.room_nights, pax: lead.pax, notes: lead.notes, account_id: '', contact_id: '' });
+    const ownerIds = (lead.owners || []).map(o => o.id);
+    const ordered = lead.user_id && ownerIds.includes(lead.user_id)
+      ? [lead.user_id, ...ownerIds.filter(id => id !== lead.user_id)]
+      : ownerIds.length ? ownerIds : (lead.user_id ? [lead.user_id] : []);
+    setForm({
+      title: lead.title, segment: lead.segment, stage: lead.stage, estimated_revenue: lead.estimated_revenue,
+      event_date: lead.event_date || '', room_nights: lead.room_nights, pax: lead.pax, notes: lead.notes || '',
+      account_id: lead.account_id || '', contact_id: lead.contact_id || '', owner_ids: ordered,
+    });
     setShowModal(true);
   };
 
+  useEffect(() => {
+    const leadId = (location.state as { leadId?: string } | null)?.leadId;
+    if (!leadId || openedLead.current === leadId) return;
+    const found = leads.find(l => l.id === leadId);
+    if (found) { openedLead.current = leadId; openEdit(found); return; }
+    if (loading) return;
+    api.get<Lead>(`/leads/${leadId}`).then(lead => { openedLead.current = leadId; openEdit(lead); }).catch(() => { openedLead.current = leadId; });
+  }, [location.state, leads, loading]);
+
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); setError(''); setLoading(true);
+    e.preventDefault(); setError('');
+    if (!form.owner_ids.length) { setError('Choose at least one lead owner'); return; }
+    setLoading(true);
     try {
       if (editing) await api.put(`/leads/${editing.id}`, form);
       else await api.post('/leads', form);
@@ -83,13 +154,14 @@ export default function Pipeline() {
     if (search) q.append('search', search);
     q.append('limit', '5000'); q.append('offset', '0');
     const res = await api.get<any>(`/leads?${q}`);
-    const rows = res.data ?? res;
+    const rows = (res.data ?? res).map((lead: Lead) => ({ ...lead, owner_names: ownerNames(lead) }));
     exportCSV('pipeline', rows, [
       { key: 'title', label: 'Lead Title' }, { key: 'segment', label: 'Segment' },
       { key: 'stage', label: 'Stage' }, { key: 'estimated_revenue', label: 'Revenue (₹)' },
       { key: 'event_date', label: 'Event Date' }, { key: 'pax', label: 'Pax' },
       { key: 'room_nights', label: 'Room Nights' }, { key: 'account_name', label: 'Account' },
-      { key: 'contact_name', label: 'Contact' }, { key: 'user_name', label: 'Owner' },
+      { key: 'contact_name', label: 'Contact' }, { key: 'user_name', label: 'Primary owner' },
+      { key: 'owner_names', label: 'Owners' }, { key: 'created_by_name', label: 'Added by' },
       { key: 'notes', label: 'Notes' }, { key: 'updated_at', label: 'Updated' },
     ]);
   };
@@ -133,12 +205,10 @@ export default function Pipeline() {
           <option value="">All Stages</option>
           {PIPELINE_STAGES.map(s => <option key={s}>{s}</option>)}
         </select>
-        {isManager() && (
-          <select className="select flex-shrink-0 text-xs w-36 py-1.5" value={filters.user_id} onChange={e => setFilters(f => ({ ...f, user_id: e.target.value }))}>
-            <option value="">All Staff</option>
-            {users.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
-          </select>
-        )}
+        <select className="select flex-shrink-0 text-xs w-40 py-1.5" value={filters.user_id} onChange={e => setFilters(f => ({ ...f, user_id: e.target.value }))}>
+          <option value="">All owners</option>
+          {people.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+        </select>
         {(search || Object.values(filters).some(v => v)) && (
           <button className="btn-ghost text-xs flex-shrink-0 px-3 py-1.5" onClick={() => { setSearch(''); setFilters({ segment: '', stage: '', user_id: '' }); }}>✕ Clear</button>
         )}
@@ -159,6 +229,10 @@ export default function Pipeline() {
                   <span className={`badge text-xs ${SEGMENT_COLORS[lead.segment]}`}>{lead.segment}</span>
                   <span className={`badge text-xs ${STAGE_COLORS[lead.stage]}`}>{lead.stage}</span>
                 </div>
+                <p className="text-xs text-gray-500 mt-2">{ownerNames(lead)}</p>
+                {lead.created_by_name && lead.created_by && !(lead.owners || []).some(o => o.id === lead.created_by) && (
+                  <p className="text-xs text-gray-400">Added by {lead.created_by_name}</p>
+                )}
                 <p className="text-sm font-bold text-green-600 mt-2">{formatCurrency(lead.estimated_revenue)}</p>
                 {lead.event_date && <p className="text-xs text-gray-400 mt-0.5">📅 {formatDate(lead.event_date)}</p>}
                 <div className="mt-2">
@@ -208,7 +282,11 @@ export default function Pipeline() {
                         <p className="text-sm font-medium text-gray-900 leading-tight">{lead.title}</p>
                         <span className={`badge text-xs flex-shrink-0 ${SEGMENT_COLORS[lead.segment]}`}>{lead.segment.slice(0, 3)}</span>
                       </div>
-                      <p className="text-xs text-gray-500">{lead.account_name || lead.user_name}</p>
+                      <p className="text-xs text-gray-500">{lead.account_name || ownerNames(lead)}</p>
+                      <p className="text-xs text-gray-400 mt-1">{ownerNames(lead)}</p>
+                      {lead.created_by_name && lead.created_by && !(lead.owners || []).some(o => o.id === lead.created_by) && (
+                        <p className="text-xs text-gray-400">Added by {lead.created_by_name}</p>
+                      )}
                       <p className="text-sm font-semibold text-green-600 mt-2">{formatCurrency(lead.estimated_revenue)}</p>
                       {lead.event_date && <p className="text-xs text-gray-400 mt-1">📅 {formatDate(lead.event_date)}</p>}
                       <div className="flex gap-1 mt-2">
@@ -232,7 +310,7 @@ export default function Pipeline() {
               <th className="pb-2 font-medium">Stage</th>
               <th className="pb-2 font-medium">Revenue</th>
               <th className="pb-2 font-medium">Event Date</th>
-              <th className="pb-2 font-medium">Owner</th>
+              <th className="pb-2 font-medium">Owners</th>
               <th className="pb-2 font-medium">Actions</th>
             </tr></thead>
             <tbody>
@@ -247,7 +325,7 @@ export default function Pipeline() {
                   </td>
                   <td className="py-3 pr-4 font-semibold text-green-600">{formatCurrency(lead.estimated_revenue)}</td>
                   <td className="py-3 pr-4 text-gray-500">{formatDate(lead.event_date)}</td>
-                  <td className="py-3 pr-4 text-gray-500 text-xs">{lead.user_name}</td>
+                  <td className="py-3 pr-4 text-gray-500 text-xs">{ownerNames(lead)}{lead.created_by_name && lead.created_by && !(lead.owners || []).some(o => o.id === lead.created_by) ? ` · added by ${lead.created_by_name}` : ''}</td>
                   <td className="py-3">
                     <div className="flex gap-1">
                       <button className="btn-ghost text-xs px-2 py-1" onClick={() => openEdit(lead)}>Edit</button>
@@ -267,6 +345,9 @@ export default function Pipeline() {
         {error && <div className="bg-red-50 text-red-700 rounded-lg px-4 py-3 mb-4 text-sm">{error}</div>}
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="md:col-span-2"><label className="label">Lead Title *</label><input className="input" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required placeholder="e.g. Sharma Wedding - 200 pax" /></div>
+          <div className="md:col-span-2">
+            <OwnerPicker people={people} value={form.owner_ids} onChange={owner_ids => setForm(f => ({ ...f, owner_ids }))} />
+          </div>
           <div><label className="label">Segment *</label>
             <select className="select" value={form.segment} onChange={e => setForm(f => ({ ...f, segment: e.target.value }))}>
               {SEGMENTS.map(s => <option key={s}>{s}</option>)}

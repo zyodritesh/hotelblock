@@ -5,6 +5,8 @@ import { api } from '../api/client';
 import { cn } from '../lib/utils';
 import MobileBottomNav from './MobileBottomNav';
 import QuickLogModal from './QuickLogModal';
+import NotificationBell from './NotificationBell';
+import { roleLabel } from '../lib/utils';
 
 const NAV_ITEMS = [
   { path: '/', label: 'Dashboard', icon: '📊' },
@@ -134,7 +136,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium truncate">{user?.name}</p>
-            <p className="text-xs text-gray-400 capitalize">{user?.role === 'executive' ? 'Executive · own data' : user?.role === 'manager' ? 'Manager · full team' : 'Admin · full access'}</p>
+            <p className="text-xs text-gray-400">{roleLabel(user?.role)}{user?.role === 'call_center' ? ' · assign leads' : user?.role === 'executive' ? ' · own data' : user?.role === 'manager' ? ' · full team' : ' · full access'}</p>
           </div>
         </div>
         <button onClick={handleLogout} className="w-full text-left text-sm text-gray-400 hover:text-white px-2 py-1 rounded hover:bg-gray-800 transition-colors">
@@ -158,11 +160,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       )}
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
-          <button onClick={() => setSidebarOpen(true)} className="text-gray-600 text-xl">☰</button>
-          <span className="font-bold text-gray-900">{activeProperty?.name || 'HotelBlock'}</span>
-          <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white" style={{ backgroundColor: brandColor }}>
-            {user?.name?.[0]?.toUpperCase()}
+        <div className="flex items-center justify-between px-4 lg:px-6 py-2 bg-white border-b border-gray-200">
+          <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-gray-600 text-xl">☰</button>
+          <span className="font-bold text-gray-900 lg:hidden truncate">{activeProperty?.name || 'HotelBlock'}</span>
+          <div className="hidden lg:block text-sm text-gray-500">{activeProperty?.name || 'HotelBlock'}</div>
+          <div className="flex items-center gap-2">
+            <NotificationBell />
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white lg:hidden" style={{ backgroundColor: brandColor }}>
+              {user?.name?.[0]?.toUpperCase()}
+            </div>
           </div>
         </div>
         <main className="flex-1 overflow-y-auto p-4 lg:p-6 pb-24 lg:pb-6">

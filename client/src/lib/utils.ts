@@ -38,6 +38,15 @@ export function currentMonth(): string {
   return new Date().toISOString().slice(0, 7);
 }
 
+export function roleLabel(role?: string | null): string {
+  return ({
+    admin: 'Admin',
+    manager: 'Sales manager',
+    executive: 'Sales executive',
+    call_center: 'Call center',
+  } as Record<string, string>)[role || ''] || (role || '');
+}
+
 export function cn(...classes: (string | undefined | null | false)[]): string {
   return classes.filter(Boolean).join(' ');
 }

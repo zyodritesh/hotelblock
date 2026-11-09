@@ -121,9 +121,32 @@ export function initDb() {
       notes TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      created_by TEXT,
       FOREIGN KEY (user_id) REFERENCES users(id),
       FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE SET NULL,
       FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS lead_owners (
+      lead_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      added_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (lead_id, user_id),
+      FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      lead_id TEXT,
+      read_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
     );
 
     CREATE TABLE IF NOT EXISTS tasks (
@@ -393,6 +416,7 @@ export function initDb() {
     "ALTER TABLE properties ADD COLUMN brand_color TEXT NOT NULL DEFAULT '#2563eb'",
     "ALTER TABLE proposals ADD COLUMN terms TEXT DEFAULT ''",
     "ALTER TABLE meetings ADD COLUMN follow_up_date TEXT",
+    "ALTER TABLE leads ADD COLUMN created_by TEXT",
   ];
 
   for (const sql of migrations) {
@@ -425,6 +449,19 @@ export function initDb() {
     db.prepare(`INSERT INTO users (id, name, email, password_hash, role) VALUES (?, ?, ?, ?, ?)`)
       .run(uuidv4(), 'Admin User', 'admin@hotel.com', hash, 'admin');
   }
+
+  const callCenter = db.prepare('SELECT id FROM users WHERE email = ?').get('neha@hotel.com');
+  if (!callCenter) {
+    const bcrypt = require('bcryptjs');
+    const { v4: uuidv4 } = require('uuid');
+    db.prepare(`INSERT INTO users (id, name, email, password_hash, role) VALUES (?, ?, ?, ?, ?)`)
+      .run(uuidv4(), 'Neha Kapoor', 'neha@hotel.com', bcrypt.hashSync('call123', 10), 'call_center');
+  }
+
+  db.exec(`INSERT OR IGNORE INTO lead_owners (lead_id, user_id, added_by, created_at)
+    SELECT id, user_id, user_id, COALESCE(created_at, datetime('now')) FROM leads
+    WHERE user_id IS NOT NULL AND user_id != ''`);
+  db.exec(`UPDATE leads SET created_by = user_id WHERE created_by IS NULL OR created_by = ''`);
 
   seedProposalCatalog(db);
   seedIncentives(db);
