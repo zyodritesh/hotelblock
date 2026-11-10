@@ -6,7 +6,7 @@ import { cn } from '../lib/utils';
 import MobileBottomNav from './MobileBottomNav';
 import QuickLogModal from './QuickLogModal';
 import NotificationBell from './NotificationBell';
-import LiveProvider from '../live/LiveProvider';
+import LiveProvider, { enablePush } from '../live/LiveProvider';
 import { getSnapshot, patch, subscribe as subscribeLive } from '../live/store';
 import { roleLabel } from '../lib/utils';
 
@@ -75,6 +75,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }, [token]);
 
   useEffect(() => { refreshOverdue(); const t = setInterval(refreshOverdue, 60000); return () => clearInterval(t); }, [refreshOverdue]);
+
+  useEffect(() => {
+    if (!token) return;
+    const installed = window.matchMedia('(display-mode: standalone)').matches || document.referrer.startsWith('android-app://');
+    if (!installed || !('Notification' in window) || Notification.permission === 'denied') return;
+    enablePush().catch(() => {});
+  }, [token]);
 
   const activeProperty = properties.find(p => p.id === activePropertyId);
   const brandColor = activeProperty?.brand_color || '#2563eb';

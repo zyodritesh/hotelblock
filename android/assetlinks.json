@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.aayor.hotelblock",
+      "sha256_cert_fingerprints": [
+        "59:14:65:F8:EF:76:42:27:75:DF:E3:C6:63:9C:D3:91:6B:87:37:67:82:50:66:42:42:CC:47:A0:3B:C2:B1:43"
+      ]
+    }
+  }
+]

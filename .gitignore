@@ -5,3 +5,11 @@ uploads/
 *.log
 .env
 .DS_Store
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/*.keystore
+android/app-release-signed.apk
+android/app-release-unsigned-aligned.apk
+android/*.aab

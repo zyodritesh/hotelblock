@@ -72,6 +72,15 @@ app.use('/api/agent-portal', agentPortalRoutes);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
+const androidDir = path.join(__dirname, '../../android');
+app.get('/.well-known/assetlinks.json', (_req, res) => {
+  res.type('application/json');
+  res.sendFile(path.join(androidDir, 'assetlinks.json'));
+});
+app.get('/hotelblock.apk', (_req, res) => {
+  res.download(path.join(androidDir, 'app-release-signed.apk'), 'HotelBlock.apk');
+});
+
 // Serve built React client
 const clientDist = path.join(__dirname, '../../client/dist');
 app.use(express.static(clientDist));
