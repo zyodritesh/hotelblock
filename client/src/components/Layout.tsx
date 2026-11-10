@@ -78,7 +78,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!token) return;
-    const installed = window.matchMedia('(display-mode: standalone)').matches || document.referrer.startsWith('android-app://');
+    const installed = window.matchMedia('(display-mode: standalone)').matches || document.referrer.startsWith('android-app://') || navigator.userAgent.includes('HotelBlockApp');
     if (!installed || !('Notification' in window) || Notification.permission === 'denied') return;
     enablePush().catch(() => {});
   }, [token]);

@@ -64,7 +64,10 @@
 
         <activity android:name="LauncherActivity"
             android:alwaysRetainTaskState="true"
+            android:configChanges="orientation|screenSize|keyboard|keyboardHidden|screenLayout|smallestScreenSize"
+            android:hardwareAccelerated="true"
             android:label="@string/launcherName"
+            android:windowSoftInputMode="adjustResize"
             android:exported="true">
             <meta-data android:name="android.support.customtabs.trusted.DEFAULT_URL"
                 android:value="@string/launchUrl" />
