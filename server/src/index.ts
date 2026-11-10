@@ -22,8 +22,16 @@ import catalogRoutes from './routes/catalog';
 import incentivesRoutes from './routes/incentives';
 import notificationsRoutes from './routes/notifications';
 import salesPlansRoutes from './routes/salesPlans';
+import chatRoutes from './routes/chat';
+import teamCallRoutes, { sweepMissedCalls } from './routes/teamCalls';
+import phoneRoutes from './routes/phone';
+import liveRoutes from './routes/live';
+import pushRoutes from './routes/push';
+import { initPush } from './push';
 
 initDb();
+initPush();
+setInterval(sweepMissedCalls, 15000);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -54,6 +62,11 @@ app.use('/api/catalog', catalogRoutes);
 app.use('/api/incentives', incentivesRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/sales-plans', salesPlansRoutes);
+app.use('/api/chat', chatRoutes);
+app.use('/api/team-calls', teamCallRoutes);
+app.use('/api/phone', phoneRoutes);
+app.use('/api/live', liveRoutes);
+app.use('/api/push', pushRoutes);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 

@@ -9,6 +9,8 @@ import Calls from './pages/Calls';
 import Meetings from './pages/Meetings';
 import Pipeline from './pages/Pipeline';
 import Calendar from './pages/Calendar';
+import Phone from './pages/Phone';
+import Chat from './pages/Chat';
 import Accounts from './pages/Accounts';
 import Contacts from './pages/Contacts';
 import Proposals from './pages/Proposals';
@@ -43,6 +45,9 @@ export default function App() {
         <Route path="/meetings" element={<RequireAuth><Meetings /></RequireAuth>} />
         <Route path="/pipeline" element={<RequireAuth><Pipeline /></RequireAuth>} />
         <Route path="/calendar" element={<RequireAuth><Calendar /></RequireAuth>} />
+        <Route path="/phone" element={<RequireAuth><Phone /></RequireAuth>} />
+        <Route path="/chat" element={<RequireAuth><Chat /></RequireAuth>} />
+        <Route path="/chat/:userId" element={<RequireAuth><Chat /></RequireAuth>} />
         <Route path="/accounts" element={<RequireAuth><Accounts /></RequireAuth>} />
         <Route path="/contacts" element={<RequireAuth><Contacts /></RequireAuth>} />
         <Route path="/proposals" element={<RequireAuth><Proposals /></RequireAuth>} />

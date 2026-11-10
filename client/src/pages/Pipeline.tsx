@@ -4,13 +4,13 @@ import { api } from '../api/client';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Pagination from '../components/Pagination';
-import { formatCurrency, formatDate, SEGMENTS, PIPELINE_STAGES, SEGMENT_COLORS, STAGE_COLORS, cn, exportCSV, roleLabel } from '../lib/utils';
+import { formatCurrency, formatStay, SEGMENTS, PIPELINE_STAGES, SEGMENT_COLORS, STAGE_COLORS, cn, exportCSV, roleLabel } from '../lib/utils';
 import { useAuthStore } from '../store/auth';
 
 interface Person { id: string; name: string; role: string; }
 interface Lead {
   id: string; title: string; segment: string; stage: string; estimated_revenue: number;
-  event_date: string | null; room_nights: number; pax: number; notes: string;
+  event_date: string | null; event_end_date?: string | null; room_nights: number; pax: number; notes: string;
   user_id: string; user_name: string; account_id?: string | null; contact_id?: string | null;
   account_name: string; contact_name: string;
   created_by?: string | null; created_by_name?: string | null;
@@ -20,7 +20,7 @@ interface Lead {
 }
 interface Hotel { id: string; name: string; city: string; }
 
-const EMPTY_FORM = { title: '', segment: 'Rooms', stage: 'Prospect', estimated_revenue: 0, event_date: '', room_nights: 0, pax: 0, notes: '', account_id: '', contact_id: '', property_id: '', owner_ids: [] as string[] };
+const EMPTY_FORM = { title: '', segment: 'Rooms', stage: 'Prospect', estimated_revenue: 0, event_date: '', event_end_date: '', room_nights: 0, pax: 0, notes: '', account_id: '', contact_id: '', property_id: '', owner_ids: [] as string[] };
 
 function ownerNames(lead: Lead) {
   if (lead.owners?.length) return lead.owners.map(o => o.id === lead.user_id ? `${o.name} (primary)` : o.name).join(', ');
@@ -126,7 +126,7 @@ export default function Pipeline() {
       : ownerIds.length ? ownerIds : (lead.user_id ? [lead.user_id] : []);
     setForm({
       title: lead.title, segment: lead.segment, stage: lead.stage, estimated_revenue: lead.estimated_revenue,
-      event_date: lead.event_date || '', room_nights: lead.room_nights, pax: lead.pax, notes: lead.notes || '',
+      event_date: lead.event_date || '', event_end_date: lead.event_end_date ? String(lead.event_end_date).slice(0, 10) : '', room_nights: lead.room_nights, pax: lead.pax, notes: lead.notes || '',
       account_id: lead.account_id || '', contact_id: lead.contact_id || '', property_id: lead.property_id || '', owner_ids: ordered,
     });
     setShowModal(true);
@@ -166,7 +166,7 @@ export default function Pipeline() {
     exportCSV('pipeline', rows, [
       { key: 'title', label: 'Lead Title' }, { key: 'segment', label: 'Segment' },
       { key: 'stage', label: 'Stage' }, { key: 'estimated_revenue', label: 'Revenue (₹)' },
-      { key: 'event_date', label: 'Event Date' }, { key: 'pax', label: 'Pax' },
+      { key: 'event_date', label: 'Start' }, { key: 'event_end_date', label: 'End' }, { key: 'pax', label: 'Pax' },
       { key: 'room_nights', label: 'Room Nights' }, { key: 'account_name', label: 'Account' },
       { key: 'contact_name', label: 'Contact' }, { key: 'property_name', label: 'Hotel' }, { key: 'user_name', label: 'Primary owner' },
       { key: 'owner_names', label: 'Owners' }, { key: 'created_by_name', label: 'Added by' },
@@ -247,7 +247,7 @@ export default function Pipeline() {
                   <p className="text-xs text-gray-400">Added by {lead.created_by_name}</p>
                 )}
                 <p className="text-sm font-bold text-green-600 mt-2">{formatCurrency(lead.estimated_revenue)}</p>
-                {lead.event_date && <p className="text-xs text-gray-400 mt-0.5">📅 {formatDate(lead.event_date)}</p>}
+                {lead.event_date && <p className="text-xs text-gray-400 mt-0.5">📅 {formatStay(lead.event_date, lead.event_end_date)}</p>}
                 <div className="mt-2">
                   <select className="border border-gray-200 rounded-lg text-xs px-2 py-1.5 bg-gray-50 w-full" value={lead.stage} onChange={e => moveStage(lead.id, e.target.value)}>
                     {PIPELINE_STAGES.map(s => <option key={s}>{s}</option>)}
@@ -302,7 +302,7 @@ export default function Pipeline() {
                         <p className="text-xs text-gray-400">Added by {lead.created_by_name}</p>
                       )}
                       <p className="text-sm font-semibold text-green-600 mt-2">{formatCurrency(lead.estimated_revenue)}</p>
-                      {lead.event_date && <p className="text-xs text-gray-400 mt-1">📅 {formatDate(lead.event_date)}</p>}
+                      {lead.event_date && <p className="text-xs text-gray-400 mt-1">📅 {formatStay(lead.event_date, lead.event_end_date)}</p>}
                       <div className="flex gap-1 mt-2">
                         <button className="text-xs text-blue-600 hover:underline" onClick={() => openEdit(lead)}>Edit</button>
                         <span className="text-gray-300">·</span>
@@ -324,7 +324,7 @@ export default function Pipeline() {
               <th className="pb-2 font-medium">Segment</th>
               <th className="pb-2 font-medium">Stage</th>
               <th className="pb-2 font-medium">Revenue</th>
-              <th className="pb-2 font-medium">Event Date</th>
+              <th className="pb-2 font-medium">Dates</th>
               <th className="pb-2 font-medium">Owners</th>
               <th className="pb-2 font-medium">Actions</th>
             </tr></thead>
@@ -340,7 +340,7 @@ export default function Pipeline() {
                     </select>
                   </td>
                   <td className="py-3 pr-4 font-semibold text-green-600">{formatCurrency(lead.estimated_revenue)}</td>
-                  <td className="py-3 pr-4 text-gray-500">{formatDate(lead.event_date)}</td>
+                  <td className="py-3 pr-4 text-gray-500">{formatStay(lead.event_date, lead.event_end_date)}</td>
                   <td className="py-3 pr-4 text-gray-500 text-xs">{ownerNames(lead)}{lead.created_by_name && lead.created_by && !(lead.owners || []).some(o => o.id === lead.created_by) ? ` · added by ${lead.created_by_name}` : ''}</td>
                   <td className="py-3">
                     <div className="flex gap-1">
@@ -382,7 +382,10 @@ export default function Pipeline() {
             </select>
           </div>
           <div><label className="label">Estimated Revenue (₹)</label><input type="number" className="input" value={form.estimated_revenue} onChange={e => setForm(f => ({ ...f, estimated_revenue: parseFloat(e.target.value) || 0 }))} /></div>
-          <div><label className="label">Event / Check-in Date</label><input type="date" className="input" value={form.event_date} onChange={e => setForm(f => ({ ...f, event_date: e.target.value }))} /></div>
+          <div><label className="label">Start date</label><input type="date" className="input" value={form.event_date} onChange={e => setForm(f => ({ ...f, event_date: e.target.value }))} /></div>
+          <div><label className="label">End date</label><input type="date" className="input" value={form.event_end_date} onChange={e => setForm(f => ({ ...f, event_end_date: e.target.value }))} />
+            <p className="text-xs text-gray-500 mt-1">Leave blank for one day. On the calendar, drag across days to set this range.</p>
+          </div>
           <div><label className="label">Room Nights</label><input type="number" className="input" value={form.room_nights} onChange={e => setForm(f => ({ ...f, room_nights: parseInt(e.target.value) || 0 }))} /></div>
           <div><label className="label">Pax / Guests</label><input type="number" className="input" value={form.pax} onChange={e => setForm(f => ({ ...f, pax: parseInt(e.target.value) || 0 }))} /></div>
           <div><label className="label">Account</label>

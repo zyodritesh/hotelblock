@@ -24,6 +24,14 @@ export function formatDate(dateStr: string | null | undefined): string {
   return new Date(dateStr).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+export function formatStay(start?: string | null, end?: string | null): string {
+  if (!start) return '—';
+  const from = start.slice(0, 10);
+  const to = (end || '').slice(0, 10);
+  if (!to || to === from) return formatDate(from);
+  return `${formatDate(from)} – ${formatDate(to)}`;
+}
+
 export function formatDateTime(dateStr: string | null | undefined): string {
   if (!dateStr) return '—';
   return new Date(dateStr).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });

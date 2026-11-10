@@ -6,11 +6,15 @@ import { cn } from '../lib/utils';
 import MobileBottomNav from './MobileBottomNav';
 import QuickLogModal from './QuickLogModal';
 import NotificationBell from './NotificationBell';
+import LiveProvider from '../live/LiveProvider';
+import { getSnapshot, patch, subscribe as subscribeLive } from '../live/store';
 import { roleLabel } from '../lib/utils';
 
 const NAV_ITEMS = [
   { path: '/', label: 'Dashboard', icon: '📊' },
   { path: '/attendance', label: 'Attendance', icon: '🕐' },
+  { path: '/phone', label: 'Phone', icon: '📲' },
+  { path: '/chat', label: 'Team Chat', icon: '💬', badge: 'chat' },
   { path: '/calls', label: 'Calls', icon: '📞' },
   { path: '/meetings', label: 'Meetings', icon: '🤝' },
   { path: '/pipeline', label: 'Pipeline', icon: '🔄' },
@@ -36,6 +40,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [properties, setProperties] = useState<Property[]>([]);
   const [overdueCount, setOverdueCount] = useState(0);
+  const [chatUnread, setChatUnread] = useState(getSnapshot().unreadChat);
+  const [toast, setToast] = useState<{ title: string; body: string } | null>(null);
+
+  useEffect(() => subscribeLive(() => {
+    const snap = getSnapshot();
+    setChatUnread(snap.unreadChat);
+    setToast(snap.toast);
+  }), []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => { setToast(null); patch({ toast: null }); }, 6000);
+    return () => clearTimeout(timer);
+  }, [toast]);
   const [showQuickLog, setShowQuickLog] = useState(false);
 
   useEffect(() => {
@@ -67,7 +85,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     return true;
   });
 
-  interface NavItem { path: string; label: string; icon: string; badge?: boolean }
+  interface NavItem { path: string; label: string; icon: string; badge?: boolean | 'chat' }
 
   const Sidebar = () => (
     <aside className="flex flex-col h-full bg-gray-900 text-white w-64">
@@ -104,8 +122,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         {(navItems as NavItem[]).map(item => {
           const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path) && item.path !== '/agents' && item.path !== '/agents/due' ? false : location.pathname === item.path);
           const exact = location.pathname === item.path;
-          const active = item.path === '/' ? exact : (item.path === '/agents' ? location.pathname === '/agents' : exact);
-          const badgeNum = item.badge && overdueCount > 0 ? overdueCount : 0;
+          const active = item.path === '/' ? exact : item.path === '/agents' ? location.pathname === '/agents' : item.path === '/chat' ? location.pathname.startsWith('/chat') : exact;
+          const badgeNum = item.badge === 'chat' ? chatUnread : item.badge && overdueCount > 0 ? overdueCount : 0;
           return (
             <Link
               key={item.path}
@@ -173,12 +191,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <main className="flex-1 overflow-y-auto p-4 lg:p-6 pb-24 lg:pb-6">
+          {toast && (
+            <button type="button" className="mb-3 w-full text-left bg-slate-900 text-white rounded-xl px-4 py-3" onClick={() => { setToast(null); patch({ toast: null }); }}>
+              <p className="text-sm font-semibold">{toast.title}</p>
+              <p className="text-xs text-slate-300 mt-0.5 line-clamp-2">{toast.body}</p>
+            </button>
+          )}
           {children}
         </main>
       </div>
 
       {/* Mobile bottom nav */}
-      <MobileBottomNav overdueCount={overdueCount} />
+      <MobileBottomNav overdueCount={overdueCount} chatUnread={chatUnread} />
+      <LiveProvider />
 
       {/* Desktop FAB — Quick Log */}
       <button

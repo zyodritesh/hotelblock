@@ -35,8 +35,10 @@ export default function NotificationBell() {
 
   useEffect(() => {
     load();
-    const t = setInterval(load, 20000);
-    return () => clearInterval(t);
+    const t = setInterval(load, 8000);
+    const refresh = () => load();
+    window.addEventListener('hb-refresh-notes', refresh);
+    return () => { clearInterval(t); window.removeEventListener('hb-refresh-notes', refresh); };
   }, []);
 
   useEffect(() => {

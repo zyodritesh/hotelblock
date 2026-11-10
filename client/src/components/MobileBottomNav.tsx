@@ -3,14 +3,14 @@ import { Link, useLocation } from 'react-router-dom';
 import QuickLogModal from './QuickLogModal';
 
 const BOTTOM_NAV = [
+  { path: '/phone', icon: '📲', label: 'Phone' },
+  { path: '/chat', icon: '💬', label: 'Chat' },
   { path: '/', icon: '📊', label: 'Home' },
-  { path: '/calls', icon: '📞', label: 'Calls' },
-  { path: '/pipeline', icon: '🔄', label: 'Pipeline' },
-  { path: '/agents/due', icon: '🔔', label: 'Follow-ups' },
+  { path: '/pipeline', icon: '🔄', label: 'Leads' },
   { path: '/calendar', icon: '📅', label: 'Calendar' },
 ];
 
-export default function MobileBottomNav({ overdueCount }: { overdueCount?: number }) {
+export default function MobileBottomNav({ overdueCount, chatUnread }: { overdueCount?: number; chatUnread?: number }) {
   const location = useLocation();
   const [showQuickLog, setShowQuickLog] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -21,15 +21,15 @@ export default function MobileBottomNav({ overdueCount }: { overdueCount?: numbe
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 flex items-stretch shadow-lg">
         {BOTTOM_NAV.map((item, i) => {
           const active = item.path === '/' ? location.pathname === '/' : location.pathname.startsWith(item.path);
-          const showBadge = item.path === '/agents/due' && (overdueCount ?? 0) > 0;
+          const badge = item.path === '/chat' ? (chatUnread ?? 0) : item.path === '/agents/due' ? (overdueCount ?? 0) : 0;
           return (
             <Link key={item.path} to={item.path}
               className={`flex-1 flex flex-col items-center justify-center py-2 text-xs font-medium transition-colors relative ${active ? 'text-blue-600' : 'text-gray-500'}`}>
               <span className="text-xl leading-none mb-0.5 relative">
                 {item.icon}
-                {showBadge && (
+                {badge > 0 && (
                   <span className="absolute -top-1 -right-2 bg-red-500 text-white text-[9px] font-bold px-1 rounded-full min-w-[14px] text-center leading-tight">
-                    {(overdueCount ?? 0) > 9 ? '9+' : overdueCount}
+                    {badge > 9 ? '9+' : badge}
                   </span>
                 )}
               </span>

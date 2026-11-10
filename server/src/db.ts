@@ -117,6 +117,7 @@ export function initDb() {
       stage TEXT NOT NULL DEFAULT 'Prospect',
       estimated_revenue REAL DEFAULT 0,
       event_date TEXT,
+      event_end_date TEXT,
       room_nights INTEGER DEFAULT 0,
       pax INTEGER DEFAULT 0,
       notes TEXT,
@@ -148,6 +149,48 @@ export function initDb() {
       read_at TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY,
+      from_user_id TEXT NOT NULL,
+      to_user_id TEXT NOT NULL,
+      body TEXT NOT NULL,
+      read_at TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (from_user_id) REFERENCES users(id),
+      FOREIGN KEY (to_user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      endpoint TEXT NOT NULL UNIQUE,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS team_calls (
+      id TEXT PRIMARY KEY,
+      from_user_id TEXT NOT NULL,
+      to_user_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      offer_sdp TEXT,
+      answer_sdp TEXT,
+      created_at TEXT NOT NULL,
+      answered_at TEXT,
+      ended_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS team_call_signals (
+      id TEXT PRIMARY KEY,
+      call_id TEXT NOT NULL,
+      from_user_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      created_at TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS tasks (
@@ -457,6 +500,7 @@ export function initDb() {
     "ALTER TABLE proposals ADD COLUMN terms TEXT DEFAULT ''",
     "ALTER TABLE meetings ADD COLUMN follow_up_date TEXT",
     "ALTER TABLE leads ADD COLUMN created_by TEXT",
+    "ALTER TABLE leads ADD COLUMN event_end_date TEXT",
     "ALTER TABLE incentives ADD COLUMN person_incentive_id TEXT",
   ];
 
