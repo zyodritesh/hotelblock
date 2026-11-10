@@ -47,6 +47,7 @@ export default function App() {
         <Route path="/calendar" element={<RequireAuth><Calendar /></RequireAuth>} />
         <Route path="/phone" element={<RequireAuth><Phone /></RequireAuth>} />
         <Route path="/chat" element={<RequireAuth><Chat /></RequireAuth>} />
+        <Route path="/chat/c/:conversationId" element={<RequireAuth><Chat /></RequireAuth>} />
         <Route path="/chat/:userId" element={<RequireAuth><Chat /></RequireAuth>} />
         <Route path="/accounts" element={<RequireAuth><Accounts /></RequireAuth>} />
         <Route path="/contacts" element={<RequireAuth><Contacts /></RequireAuth>} />

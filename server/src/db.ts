@@ -155,11 +155,38 @@ export function initDb() {
       id TEXT PRIMARY KEY,
       from_user_id TEXT NOT NULL,
       to_user_id TEXT NOT NULL,
+      conversation_id TEXT,
       body TEXT NOT NULL,
+      attachments TEXT DEFAULT '[]',
+      kind TEXT DEFAULT 'user',
       read_at TEXT,
+      edited_at TEXT,
+      deleted_at TEXT,
       created_at TEXT NOT NULL,
       FOREIGN KEY (from_user_id) REFERENCES users(id),
       FOREIGN KEY (to_user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS conversations (
+      id TEXT PRIMARY KEY,
+      title TEXT,
+      is_group INTEGER NOT NULL DEFAULT 0,
+      created_by TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS conversation_members (
+      conversation_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      last_read_at TEXT,
+      PRIMARY KEY (conversation_id, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS call_participants (
+      call_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      PRIMARY KEY (call_id, user_id)
     );
 
     CREATE TABLE IF NOT EXISTS push_subscriptions (
@@ -502,6 +529,14 @@ export function initDb() {
     "ALTER TABLE leads ADD COLUMN created_by TEXT",
     "ALTER TABLE leads ADD COLUMN event_end_date TEXT",
     "ALTER TABLE incentives ADD COLUMN person_incentive_id TEXT",
+    "ALTER TABLE messages ADD COLUMN conversation_id TEXT",
+    "ALTER TABLE messages ADD COLUMN attachments TEXT DEFAULT '[]'",
+    "ALTER TABLE messages ADD COLUMN kind TEXT DEFAULT 'user'",
+    "ALTER TABLE messages ADD COLUMN edited_at TEXT",
+    "ALTER TABLE messages ADD COLUMN deleted_at TEXT",
+    "ALTER TABLE team_calls ADD COLUMN conversation_id TEXT",
+    "ALTER TABLE team_calls ADD COLUMN is_group INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE team_call_signals ADD COLUMN to_user_id TEXT",
   ];
 
   for (const sql of migrations) {

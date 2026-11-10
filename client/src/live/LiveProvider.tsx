@@ -64,7 +64,7 @@ export default function LiveProvider() {
       if (event === 'notification') {
         window.dispatchEvent(new Event('hb-refresh-notes'));
         const path = pathRef.current;
-        const sameChat = data.type === 'chat' && path.startsWith('/chat');
+        const sameChat = data.type === 'chat' && data.url && path === data.url;
         if (!sameChat) showToast(data.title, data.body);
       }
       if (event === 'chat') window.dispatchEvent(new CustomEvent('hb-chat', { detail: data }));
