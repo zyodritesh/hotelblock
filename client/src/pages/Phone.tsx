@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { roleLabel } from '../lib/utils';
 import { startOutgoing } from '../live/session';
+import { getSnapshot, subscribe } from '../live/store';
 import { enablePush } from '../live/LiveProvider';
 import { dialNumber, openWhatsApp } from '../lib/phone';
 
@@ -13,6 +14,35 @@ interface Book {
   contacts: Contact[];
   recent: Contact[];
 }
+interface CallLog {
+  id: string;
+  direction: 'in' | 'out';
+  peer_name: string;
+  status: string;
+  duration_sec: number;
+  created_at: string;
+}
+
+function callWhen(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+}
+
+function callLength(seconds: number) {
+  const mins = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return `${mins}:${String(rest).padStart(2, '0')}`;
+}
+
+const CALL_STATUS: Record<string, string> = {
+  ended: 'Connected',
+  missed: 'Missed',
+  declined: 'Declined',
+  cancelled: 'Cancelled',
+  ringing: 'Ringing',
+  accepted: 'On a call',
+};
 
 function Action({ label, tone, onClick }: { label: string; tone: string; onClick: () => void }) {
   return (
@@ -25,7 +55,9 @@ function Action({ label, tone, onClick }: { label: string; tone: string; onClick
 export default function Phone() {
   const navigate = useNavigate();
   const [book, setBook] = useState<Book>({ team: [], contacts: [], recent: [] });
+  const [log, setLog] = useState<CallLog[]>([]);
   const [q, setQ] = useState('');
+  const phase = useSyncExternalStore(subscribe, () => getSnapshot().phase, () => getSnapshot().phase);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [install, setInstall] = useState<any>(null);
@@ -35,7 +67,10 @@ export default function Phone() {
     api.get<Book>(`/phone${params}`).then(setBook).catch(() => {});
   };
 
-  useEffect(() => { load(''); }, []);
+  const loadLog = () => api.get<CallLog[]>('/team-calls/log').then(setLog).catch(() => {});
+
+  useEffect(() => { load(''); loadLog(); }, []);
+  useEffect(() => { if (phase === 'idle') loadLog(); }, [phase]);
 
   useEffect(() => {
     const onPrompt = (event: Event) => {
@@ -85,6 +120,21 @@ export default function Phone() {
         </div>
         <p className="text-[11px] text-slate-400">On iPhone: Share, then Add to Home Screen. Notifications work after the icon is on the home screen.</p>
       </div>}
+
+      <section>
+        <h2 className="text-sm font-semibold text-gray-700 mb-2">Call log</h2>
+        <div className="space-y-2">
+          {log.length === 0 && <p className="text-sm text-gray-400">Team calls are saved here, with the time and how long you were connected.</p>}
+          {log.map(row => (
+            <div key={row.id} className="bg-white border border-gray-200 rounded-xl px-3 py-3 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-gray-900 truncate">{row.direction === 'out' ? 'Outgoing' : 'Incoming'} · {row.peer_name}</p>
+                <p className="text-xs text-gray-500 truncate">{callWhen(row.created_at)} · {CALL_STATUS[row.status] || row.status}{row.duration_sec > 0 ? ` · ${callLength(row.duration_sec)}` : ''}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <section>
         <h2 className="text-sm font-semibold text-gray-700 mb-2">Team</h2>

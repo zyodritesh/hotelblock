@@ -22,6 +22,23 @@ function busy(userId: string) {
   return db.prepare(`SELECT c.id as id FROM team_calls c JOIN call_participants p ON p.call_id=c.id WHERE c.status IN ('ringing','accepted') AND p.user_id=? AND p.status IN ('ringing','joined')`).get(userId) as { id: string } | undefined;
 }
 
+function durationOf(call: any, endedAt: string) {
+  if (!call?.answered_at) return 0;
+  const start = Date.parse(call.answered_at);
+  const end = Date.parse(endedAt);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 0;
+  return Math.round((end - start) / 1000);
+}
+
+function closeCall(call: any, status: string, durationOverride?: number) {
+  const endedAt = new Date().toISOString();
+  const talked = typeof durationOverride === 'number' && durationOverride >= 0 && durationOverride < 8 * 3600
+    ? Math.round(durationOverride)
+    : durationOf(call, endedAt);
+  const duration = status === 'ended' ? talked : 0;
+  return db.prepare(`UPDATE team_calls SET status=?, ended_at=?, duration_sec=? WHERE id=? AND status IN ('ringing','accepted')`).run(status, endedAt, duration, call.id);
+}
+
 function party(call: any, userId: string) {
   if (!call) return false;
   if (call.is_group) return !!db.prepare('SELECT 1 FROM call_participants WHERE call_id=? AND user_id=?').get(call.id, userId);
@@ -63,6 +80,44 @@ export function incomingFor(userId: string) {
 
 router.get('/incoming', (req: AuthRequest, res: Response) => {
   return res.json(incomingFor(req.user!.id));
+});
+
+router.get('/log', (req: AuthRequest, res: Response) => {
+  const me = req.user!.id;
+  const rows = db.prepare(`SELECT c.id, c.from_user_id, c.to_user_id, c.status, c.created_at, c.answered_at, c.ended_at, IFNULL(c.duration_sec, 0) as duration_sec,
+      IFNULL(c.is_group, 0) as is_group, c.conversation_id, fu.name as from_name, tu.name as to_name, cv.title as chat_title
+    FROM team_calls c
+    LEFT JOIN users fu ON fu.id=c.from_user_id
+    LEFT JOIN users tu ON tu.id=c.to_user_id
+    LEFT JOIN conversations cv ON cv.id=c.conversation_id
+    WHERE c.from_user_id=? OR c.to_user_id=? OR c.id IN (SELECT call_id FROM call_participants WHERE user_id=?)
+    ORDER BY c.created_at DESC LIMIT 40`).all(me, me, me) as any[];
+  return res.json(rows.map(row => {
+    const endedAt = row.ended_at || '';
+    const duration = row.duration_sec || (row.status === 'ended' ? durationOf(row, endedAt) : 0);
+    const peer = row.is_group
+      ? (row.chat_title || 'Group call')
+      : (row.from_user_id === me ? (row.to_name || 'Teammate') : (row.from_name || 'Teammate'));
+    return {
+      id: row.id,
+      direction: row.from_user_id === me ? 'out' : 'in',
+      peer_name: peer,
+      status: row.status,
+      duration_sec: duration,
+      created_at: row.created_at,
+      is_group: !!row.is_group,
+    };
+  }));
+});
+
+router.get('/:id', (req: AuthRequest, res: Response) => {
+  const call = load(req.params.id);
+  if (!party(call, req.user!.id)) return res.status(404).json({ error: 'Call not found' });
+  return res.json({
+    ...present(call),
+    answer_sdp: req.user!.id === call.from_user_id ? (call.answer_sdp || null) : null,
+    duration_sec: call.duration_sec || 0,
+  });
 });
 
 router.post('/', (req: AuthRequest, res: Response) => {
@@ -125,8 +180,7 @@ router.post('/:id/decline', (req: AuthRequest, res: Response) => {
   }
   if (!call || call.to_user_id !== req.user!.id) return res.status(403).json({ error: 'Only the person being called can decline' });
   if (call.status !== 'ringing') return res.json({ ok: true });
-  const now = new Date().toISOString();
-  db.prepare(`UPDATE team_calls SET status='declined', ended_at=? WHERE id=?`).run(now, call.id);
+  closeCall(call, 'declined');
   publish(call.from_user_id, 'call', { action: 'declined', callId: call.id });
   return res.json({ ok: true });
 });
@@ -136,9 +190,9 @@ router.post('/:id/end', (req: AuthRequest, res: Response) => {
   if (!party(call, req.user!.id)) return res.status(403).json({ error: 'Forbidden' });
   if (call.is_group) return leaveGroup(call, req, res);
   if (!['ringing', 'accepted'].includes(call.status)) return res.json({ ok: true });
-  const now = new Date().toISOString();
   const status = call.status === 'ringing' ? 'cancelled' : 'ended';
-  db.prepare(`UPDATE team_calls SET status=?, ended_at=? WHERE id=?`).run(status, now, call.id);
+  const rawDuration = Number(req.body?.duration_sec);
+  closeCall(call, status, Number.isFinite(rawDuration) ? rawDuration : undefined);
   const other = req.user!.id === call.from_user_id ? call.to_user_id : call.from_user_id;
   publish(other, 'call', { action: status, callId: call.id });
   return res.json({ ok: true });
@@ -162,8 +216,9 @@ router.post('/:id/signal', (req: AuthRequest, res: Response) => {
 router.get('/:id/signals', (req: AuthRequest, res: Response) => {
   const call = load(req.params.id);
   if (!party(call, req.user!.id)) return res.status(403).json({ error: 'Forbidden' });
-  const rows = db.prepare('SELECT kind, payload FROM team_call_signals WHERE call_id=? AND from_user_id!=? ORDER BY created_at').all(call.id, req.user!.id) as { kind: string; payload: string }[];
-  return res.json(rows.map(r => ({ kind: r.kind, payload: JSON.parse(r.payload) })));
+  const rows = db.prepare(`SELECT id, from_user_id, kind, payload FROM team_call_signals
+    WHERE call_id=? AND from_user_id!=? AND (to_user_id IS NULL OR to_user_id=?) ORDER BY created_at`).all(call.id, req.user!.id, req.user!.id) as { id: string; from_user_id: string; kind: string; payload: string }[];
+  return res.json(rows.map(r => ({ id: r.id, from_user_id: r.from_user_id, kind: r.kind, payload: JSON.parse(r.payload) })));
 });
 
 function startGroup(req: AuthRequest, res: Response) {
@@ -200,12 +255,12 @@ function startGroup(req: AuthRequest, res: Response) {
 }
 
 function leaveGroup(call: any, req: AuthRequest, res: Response) {
-  const now = new Date().toISOString();
   db.prepare(`UPDATE call_participants SET status='left' WHERE call_id=? AND user_id=? AND status IN ('joined','ringing')`).run(call.id, req.user!.id);
   const still = db.prepare(`SELECT user_id FROM call_participants WHERE call_id=? AND status='joined'`).all(call.id) as { user_id: string }[];
   if (!still.length) {
-    const status = call.answered_at ? 'ended' : 'cancelled';
-    db.prepare(`UPDATE team_calls SET status=?, ended_at=? WHERE id=?`).run(status, now, call.id);
+    const others = db.prepare(`SELECT COUNT(*) as c FROM call_participants WHERE call_id=? AND user_id!=? AND status='left'`).get(call.id, req.user!.id) as { c: number };
+    const status = others.c > 0 ? 'ended' : 'cancelled';
+    closeCall(call, status);
     const rest = db.prepare(`SELECT user_id FROM call_participants WHERE call_id=? AND status='ringing'`).all(call.id) as { user_id: string }[];
     for (const person of rest) publish(person.user_id, 'call', { action: status, callId: call.id });
   } else {
@@ -235,7 +290,6 @@ function signalGroup(call: any, req: AuthRequest, res: Response) {
 
 export function sweepMissedCalls() {
   const cutoff = new Date(Date.now() - 45000).toISOString();
-  const now = new Date().toISOString();
   const ringingPeople = db.prepare(`SELECT p.user_id, c.id as call_id, c.from_user_id FROM call_participants p JOIN team_calls c ON c.id=p.call_id
     WHERE c.is_group=1 AND c.status='accepted' AND p.status='ringing' AND c.created_at < ?`).all(cutoff) as { user_id: string; call_id: string; from_user_id: string }[];
   for (const row of ringingPeople) {
@@ -250,7 +304,7 @@ export function sweepMissedCalls() {
   }
   const rows = db.prepare(`SELECT * FROM team_calls WHERE IFNULL(is_group,0)=0 AND status='ringing' AND created_at < ?`).all(cutoff) as any[];
   for (const call of rows) {
-    const changed = db.prepare(`UPDATE team_calls SET status='missed', ended_at=? WHERE id=? AND status='ringing'`).run(now, call.id);
+    const changed = closeCall(call, 'missed');
     if (!changed.changes) continue;
     publish(call.from_user_id, 'call', { action: 'missed', callId: call.id });
     publish(call.to_user_id, 'call', { action: 'missed', callId: call.id });

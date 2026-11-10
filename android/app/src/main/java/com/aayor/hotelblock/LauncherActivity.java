@@ -6,12 +6,15 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.Manifest;
 import android.content.ActivityNotFoundException;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.media.AudioManager;
 import android.webkit.JavascriptInterface;
+import org.json.JSONObject;
 import android.view.ViewGroup;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -36,8 +39,11 @@ import android.widget.Toast;
  * so the window stays up even when Custom Tabs cannot start.
  */
 public class LauncherActivity extends Activity {
+    static volatile boolean inForeground = false;
+    private static LauncherActivity instance;
     private static final int MIC_REQUEST = 42;
     private WebView webView;
+    private String pendingAccept;
     private ValueCallback<Uri[]> fileCallback;
     private PermissionRequest pendingWebPermission;
 
@@ -74,6 +80,11 @@ public class LauncherActivity extends Activity {
 
         webView.addJavascriptInterface(new NativeBridge(), "HotelBlockNative");
         webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                pumpAccept(0);
+            }
+
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 return openOutsideApp(request.getUrl());
@@ -129,7 +140,48 @@ public class LauncherActivity extends Activity {
             }
         }
 
+        String accept = getIntent() == null ? null : getIntent().getStringExtra("accept_call");
+        if (accept != null) pendingAccept = accept;
         webView.loadUrl(startUrl());
+    }
+
+    static void tellWeb(Context context, String js) {
+        LauncherActivity activity = instance;
+        if (activity == null || activity.webView == null) return;
+        activity.runOnUiThread(() -> activity.webView.evaluateJavascript(js, null));
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        String accept = intent == null ? null : intent.getStringExtra("accept_call");
+        if (accept != null) pendingAccept = accept;
+        pumpAccept(0);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        instance = this;
+        inForeground = true;
+        pumpAccept(0);
+    }
+
+    @Override
+    protected void onPause() {
+        inForeground = false;
+        super.onPause();
+    }
+
+    private void pumpAccept(int attempt) {
+        if (pendingAccept == null || webView == null) return;
+        String id = pendingAccept;
+        String js = "(function(){if(window.__hbAcceptCall){window.__hbAcceptCall(" + JSONObject.quote(id) + ");return true;}return false;})()";
+        webView.evaluateJavascript(js, value -> {
+            if ("true".equals(value)) pendingAccept = null;
+            else if (attempt < 20) webView.postDelayed(() -> pumpAccept(attempt + 1), 300);
+        });
     }
 
     private String startUrl() {
@@ -225,6 +277,31 @@ public class LauncherActivity extends Activity {
         public void whatsapp(String number) {
             runOnUiThread(() -> openWhatsApp(number));
         }
+
+        @JavascriptInterface
+        public void armCalls(String token) {
+            CallWatchService.arm(LauncherActivity.this, token);
+        }
+
+        @JavascriptInterface
+        public void stopCalls() {
+            CallWatchService.stop(LauncherActivity.this);
+        }
+
+        @JavascriptInterface
+        public void callScreen(boolean open) {
+            runOnUiThread(() -> {
+                if (Build.VERSION.SDK_INT >= 27) {
+                    setShowWhenLocked(open);
+                    setTurnScreenOn(open);
+                }
+                AudioManager audio = (AudioManager) getSystemService(AUDIO_SERVICE);
+                if (audio != null) {
+                    audio.setMode(open ? AudioManager.MODE_IN_COMMUNICATION : AudioManager.MODE_NORMAL);
+                    audio.setSpeakerphoneOn(open);
+                }
+            });
+        }
     }
 
     @Override
@@ -244,6 +321,7 @@ public class LauncherActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (instance == this) instance = null;
         if (webView != null) webView.destroy();
         super.onDestroy();
     }

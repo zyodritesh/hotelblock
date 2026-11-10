@@ -85,10 +85,10 @@ function sendDownload(res: express.Response, file: string, name: string, type: s
 }
 
 app.get('/hotelblock.apk', (_req, res) => {
-  sendDownload(res, path.join(androidDir, 'app-release-signed.apk'), 'HotelBlock-1.0.4.apk', 'application/octet-stream');
+  sendDownload(res, path.join(androidDir, 'app-release-signed.apk'), 'HotelBlock-1.0.5.apk', 'application/octet-stream');
 });
 app.get('/HotelBlock.zip', (_req, res) => {
-  sendDownload(res, path.join(androidDir, 'HotelBlock.zip'), 'HotelBlock-1.0.4.zip', 'application/zip');
+  sendDownload(res, path.join(androidDir, 'HotelBlock.zip'), 'HotelBlock-1.0.5.zip', 'application/zip');
 });
 app.get('/get-app', (_req, res) => {
   res.type('html').send(`<!doctype html>
@@ -101,10 +101,10 @@ app.get('/get-app', (_req, res) => {
 <body style="margin:0;font-family:sans-serif;background:#0f172a;color:#fff">
   <main style="max-width:420px;margin:0 auto;padding:28px 20px">
     <h1 style="font-size:28px;margin:0 0 8px">HotelBlock</h1>
-    <p style="color:#cbd5e1;line-height:1.5">Version 1.0.4. Pehle purani HotelBlock uninstall karo. Phir ZIP download karo, andar HotelBlock-1.0.4.apk install karo. Microphone aur notifications par Allow dabao, tabhi call chalegi.</p>
-    <a href="/HotelBlock.zip" style="display:block;margin:18px 0;background:#2563eb;color:#fff;text-align:center;text-decoration:none;font-weight:700;padding:16px;border-radius:14px">Download ZIP 1.0.4</a>
-    <a href="/hotelblock.apk" style="display:block;margin:0 0 18px;background:#1e293b;color:#fff;text-align:center;text-decoration:none;font-weight:700;padding:16px;border-radius:14px">Download APK 1.0.4</a>
-    <p style="color:#94a3b8;font-size:14px;line-height:1.5">Customer call phone app kholti hai. Team call app ke andar hoti hai.</p>
+    <p style="color:#cbd5e1;line-height:1.5">Version 1.0.5. Pehle purani HotelBlock uninstall karo. Phir ZIP download karo, andar HotelBlock-1.0.5.apk install karo. Microphone aur notifications par Allow dabao. Team call tab bhi aati hai jab app screen par na ho.</p>
+    <a href="/HotelBlock.zip" style="display:block;margin:18px 0;background:#2563eb;color:#fff;text-align:center;text-decoration:none;font-weight:700;padding:16px;border-radius:14px">Download ZIP 1.0.5</a>
+    <a href="/hotelblock.apk" style="display:block;margin:0 0 18px;background:#1e293b;color:#fff;text-align:center;text-decoration:none;font-weight:700;padding:16px;border-radius:14px">Download APK 1.0.5</a>
+    <p style="color:#94a3b8;font-size:14px;line-height:1.5">Customer call phone app kholti hai. Team call app ke andar connect hoti hai, timer tab chalta hai, aur call log mein save hoti hai.</p>
   </main>
 </body>
 </html>`);

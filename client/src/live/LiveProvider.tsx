@@ -55,6 +55,13 @@ export default function LiveProvider() {
   pathRef.current = location.pathname;
 
   useEffect(() => {
+    const bridge = (window as unknown as { HotelBlockNative?: { armCalls?: (token: string) => void; stopCalls?: () => void } }).HotelBlockNative;
+    if (!bridge?.armCalls) return;
+    if (token) bridge.armCalls(token);
+    else bridge.stopCalls?.();
+  }, [token]);
+
+  useEffect(() => {
     if (!token) return;
     const controller = new AbortController();
     let stopped = false;

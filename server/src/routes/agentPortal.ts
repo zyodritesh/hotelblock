@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../db';
-import { authenticate, AuthRequest, requireAdmin, requireManagerOrAdmin } from '../middleware/auth';
+import { authenticate, AuthRequest, ownScope, requireAdmin, requireManagerOrAdmin } from '../middleware/auth';
 import { notifyUsers } from '../notify';
 import {
   INCENTIVE_METRICS, incentiveProgress, loyaltyTiers, readIncentive, saveLoyalty, settleIncentives, walletView,
@@ -191,6 +191,64 @@ router.get('/vouchers', (req: AuthRequest, res: Response) => {
     ${own ? 'WHERE a.assigned_to=?' : ''}
     ORDER BY v.created_at DESC LIMIT 100`).all(...(own ? [req.user!.id] : []));
   return res.json(rows);
+});
+
+function offerAudience(req: AuthRequest) {
+  const own = ownScope(req.user?.role);
+  return db.prepare(`SELECT a.id, a.name, a.agency_name, a.city, a.user_id
+    FROM agents a
+    JOIN users u ON u.id=a.user_id AND u.role='agent' AND u.active=1
+    WHERE a.status!='Deleted' ${own ? 'AND a.assigned_to=?' : ''}
+    ORDER BY a.name`).all(...(own ? [req.user!.id] : [])) as { id: string; name: string; agency_name: string; city: string; user_id: string }[];
+}
+
+router.get('/offers/audience', (req: AuthRequest, res: Response) => {
+  if (req.user?.role === 'agent') return res.status(403).json({ error: 'Forbidden' });
+  return res.json(offerAudience(req));
+});
+
+router.get('/offers', (req: AuthRequest, res: Response) => {
+  if (req.user?.role === 'agent') return res.status(403).json({ error: 'Forbidden' });
+  const own = ownScope(req.user?.role);
+  const rows = db.prepare(`SELECT o.id, o.title, o.body, o.recipient_count, o.created_at, u.name as sender_name
+    FROM agent_offers o LEFT JOIN users u ON u.id=o.created_by
+    ${own ? 'WHERE o.created_by=?' : ''}
+    ORDER BY o.created_at DESC LIMIT 30`).all(...(own ? [req.user!.id] : []));
+  return res.json(rows);
+});
+
+router.post('/offers', (req: AuthRequest, res: Response) => {
+  if (req.user?.role === 'agent') return res.status(403).json({ error: 'Forbidden' });
+  const title = String(req.body?.title || '').trim();
+  const body = String(req.body?.body || '').trim();
+  if (!title || title.length > 80) return res.status(400).json({ error: 'Write a short title, up to 80 characters' });
+  if (!body || body.length > 500) return res.status(400).json({ error: 'Write the offer, up to 500 characters' });
+  const audience = offerAudience(req);
+  const requested = Array.isArray(req.body?.agent_ids) ? req.body.agent_ids.map((id: unknown) => String(id)) : [];
+  const chosen = requested.length ? audience.filter(agent => requested.includes(agent.id)) : audience;
+  if (!chosen.length) return res.status(400).json({ error: 'No signed-in agents to notify' });
+  const id = uuidv4();
+  const now = new Date().toISOString();
+  db.prepare('INSERT INTO agent_offers (id, title, body, created_by, recipient_count, created_at) VALUES (?,?,?,?,?,?)')
+    .run(id, title, body, req.user!.id, chosen.length, now);
+  notifyUsers(chosen.map(agent => agent.user_id), req.user!.id, { type: 'offer', title, body, url: '/agent' });
+  return res.status(201).json({ id, recipient_count: chosen.length });
+});
+
+router.get('/inbox', (req: AuthRequest, res: Response) => {
+  const agent = requireAgent(req, res);
+  if (!agent) return;
+  const rows = db.prepare(`SELECT id, type, title, body, read_at, created_at FROM notifications
+    WHERE user_id=? ORDER BY created_at DESC LIMIT 40`).all(req.user!.id);
+  const unread = (db.prepare('SELECT COUNT(*) as c FROM notifications WHERE user_id=? AND read_at IS NULL').get(req.user!.id) as { c: number }).c;
+  return res.json({ data: rows, unread });
+});
+
+router.post('/inbox/read', (req: AuthRequest, res: Response) => {
+  const agent = requireAgent(req, res);
+  if (!agent) return;
+  db.prepare('UPDATE notifications SET read_at=? WHERE user_id=? AND read_at IS NULL').run(new Date().toISOString(), req.user!.id);
+  return res.json({ ok: true });
 });
 
 router.post('/vouchers/:id/use', requireManagerOrAdmin, (req: AuthRequest, res: Response) => {

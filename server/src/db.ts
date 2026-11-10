@@ -377,6 +377,16 @@ export function initDb() {
       FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS agent_offers (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_by TEXT NOT NULL,
+      recipient_count INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    );
+
     CREATE TABLE IF NOT EXISTS agent_wallet (
       id TEXT PRIMARY KEY,
       agent_id TEXT NOT NULL,
@@ -589,6 +599,7 @@ export function initDb() {
     "ALTER TABLE messages ADD COLUMN deleted_at TEXT",
     "ALTER TABLE team_calls ADD COLUMN conversation_id TEXT",
     "ALTER TABLE team_calls ADD COLUMN is_group INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE team_calls ADD COLUMN duration_sec INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE team_call_signals ADD COLUMN to_user_id TEXT",
     "ALTER TABLE agents ADD COLUMN user_id TEXT",
     "ALTER TABLE leads ADD COLUMN agent_id TEXT",

@@ -27,6 +27,11 @@
         <uses-permission android:name="android.permission.RECORD_AUDIO"/>
         <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
         <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+        <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+        <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+        <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
+        <uses-permission android:name="android.permission.VIBRATE"/>
+        <uses-permission android:name="android.permission.WAKE_LOCK"/>
     
 
     
@@ -66,6 +71,7 @@
 
         <activity android:name="LauncherActivity"
             android:alwaysRetainTaskState="true"
+            android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|keyboard|keyboardHidden|screenLayout|smallestScreenSize"
             android:hardwareAccelerated="true"
             android:label="@string/launcherName"
@@ -149,6 +155,25 @@
 
             
         </activity>
+
+        <activity android:name=".IncomingCallActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/Theme.HotelBlock.Incoming" />
+
+        <receiver android:name=".CallActionReceiver" android:exported="false" />
+
+        <service
+            android:name=".CallWatchService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Listen for HotelBlock team calls while the app is not on screen" />
+        </service>
 
         <activity android:name="com.google.androidbrowserhelper.trusted.FocusActivity" />
 

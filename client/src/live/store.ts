@@ -12,6 +12,7 @@ export interface LiveSnapshot {
   peerName: string;
   peerId: string;
   callId: string;
+  connectedAt: number;
   error: string;
   toast: Toast | null;
 }
@@ -23,6 +24,7 @@ let snapshot: LiveSnapshot = {
   peerName: '',
   peerId: '',
   callId: '',
+  connectedAt: 0,
   error: '',
   toast: null,
 };

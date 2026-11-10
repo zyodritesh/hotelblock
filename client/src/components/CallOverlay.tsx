@@ -14,16 +14,21 @@ export default function CallOverlay() {
 
   useEffect(() => {
     bindRemoteAudio(stream => {
-      if (audioRef.current) audioRef.current.srcObject = stream;
+      const audio = audioRef.current;
+      if (!audio) return;
+      audio.srcObject = stream;
+      if (stream) audio.play().catch(() => {});
     });
   }, []);
 
   useEffect(() => {
     if (live.phase !== 'live') { setSeconds(0); return; }
-    const started = Date.now();
-    const timer = setInterval(() => setSeconds(Math.floor((Date.now() - started) / 1000)), 1000);
+    const started = live.connectedAt || Date.now();
+    const tick = () => setSeconds(Math.max(0, Math.floor((Date.now() - started) / 1000)));
+    tick();
+    const timer = setInterval(tick, 1000);
     return () => clearInterval(timer);
-  }, [live.phase]);
+  }, [live.phase, live.connectedAt]);
 
   useEffect(() => {
     if (live.phase !== 'incoming' && live.phase !== 'outgoing') return;
@@ -49,13 +54,13 @@ export default function CallOverlay() {
       {open && (
         <div className="fixed inset-0 z-[70] bg-slate-950/95 text-white flex flex-col items-center justify-center p-6">
           <p className="text-sm uppercase tracking-wide text-slate-400">
-            {live.phase === 'incoming' ? 'Incoming call' : live.phase === 'outgoing' ? 'Calling' : live.phase === 'connecting' ? 'Connecting' : 'On a call'}
+            {live.phase === 'incoming' ? 'Incoming call' : live.phase === 'outgoing' ? 'Calling' : live.phase === 'connecting' ? 'Connecting' : 'Connected'}
           </p>
           <div className="mt-4 w-20 h-20 rounded-full bg-blue-600 flex items-center justify-center text-3xl font-bold">
             {live.peerName?.[0]?.toUpperCase() || '?'}
           </div>
-          <h2 className="mt-4 text-2xl font-semibold">{live.peerName || 'Teammate'}</h2>
-          <p className="mt-1 text-slate-400">{live.phase === 'live' ? clock : 'HotelBlock'}</p>
+          <h2 className="mt-4 text-2xl font-semibold text-center">{live.peerName || 'Teammate'}</h2>
+          <p className="mt-1 text-slate-400">{live.phase === 'live' ? clock : live.phase === 'connecting' ? 'Connecting audio' : 'Ringing'}</p>
           <div className="mt-10 flex gap-4">
             {live.phase === 'incoming' && (
               <>

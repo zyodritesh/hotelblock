@@ -35,23 +35,48 @@ function inr(n: number) {
   return `₹${Math.round(n || 0).toLocaleString('en-IN')}`;
 }
 
+interface OfferNote { id: string; title: string; body: string; read_at: string | null; created_at: string; }
+
 const METRIC_LABEL: Record<string, string> = {
   enquiries: 'enquiries',
   bookings: 'bookings',
   revenue: 'revenue',
 };
 
+function when(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+}
+
 export default function AgentPortal() {
   const [data, setData] = useState<Portal | null>(null);
-  const [tab, setTab] = useState<'wallet' | 'enquiry' | 'night'>('wallet');
+  const [offers, setOffers] = useState<OfferNote[]>([]);
+  const [unread, setUnread] = useState(0);
+  const [tab, setTab] = useState<'wallet' | 'enquiry' | 'night' | 'offers'>('wallet');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [enquiry, setEnquiry] = useState({ property_id: '', guest_name: '', guest_phone: '', segment: 'Rooms', event_date: '', event_end_date: '', pax: '2', notes: '' });
   const [night, setNight] = useState({ property_id: '', guest_name: '', event_date: '', event_end_date: '', nights: '1' });
 
-  const load = () => api.get<Portal>('/agent-portal/me').then(setData).catch((err: Error) => setError(err.message));
+  const load = () => Promise.all([
+    api.get<Portal>('/agent-portal/me'),
+    api.get<{ data: OfferNote[]; unread: number }>('/agent-portal/inbox'),
+  ]).then(([portal, inbox]) => {
+    setData(portal);
+    setOffers(inbox.data);
+    setUnread(inbox.unread);
+  }).catch((err: Error) => setError(err.message));
   useEffect(() => { load(); }, []);
+
+  const openOffers = () => {
+    setTab('offers');
+    if (unread > 0) {
+      api.post('/agent-portal/inbox/read', {}).then(() => setUnread(0)).catch(() => {});
+      setOffers(current => current.map(row => ({ ...row, read_at: row.read_at || new Date().toISOString() })));
+    }
+  };
 
   const sendEnquiry = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,10 +136,15 @@ export default function AgentPortal() {
         </p>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
-        {([['wallet', 'Wallet'], ['enquiry', 'Enquiry'], ['night', 'Free night']] as const).map(([key, label]) => (
-          <button key={key} type="button" onClick={() => setTab(key)}
-            className={`rounded-xl py-2 text-sm font-medium ${tab === key ? 'bg-stone-900 text-white' : 'bg-white border border-stone-200 text-stone-600'}`}>
+      <div className="grid grid-cols-4 gap-2">
+        {([
+          ['wallet', 'Wallet'],
+          ['enquiry', 'Enquiry'],
+          ['night', 'Night'],
+          ['offers', unread > 0 ? `Offers ${unread}` : 'Offers'],
+        ] as const).map(([key, label]) => (
+          <button key={key} type="button" onClick={() => (key === 'offers' ? openOffers() : setTab(key))}
+            className={`rounded-xl py-2 text-xs sm:text-sm font-medium ${tab === key ? 'bg-stone-900 text-white' : 'bg-white border border-stone-200 text-stone-600'}`}>
             {label}
           </button>
         ))}
@@ -239,6 +269,25 @@ export default function AgentPortal() {
           </label>
           <button className="btn-primary w-full justify-center" disabled={busy}>{busy ? 'Sending…' : 'Send enquiry'}</button>
         </form>
+      )}
+
+      {tab === 'offers' && (
+        <div className="space-y-3">
+          {offers.length === 0 && (
+            <div className="bg-white rounded-2xl border border-stone-200 p-4">
+              <p className="text-sm text-stone-500">No offers yet. When the hotel sends a rate or a message, it lands here.</p>
+            </div>
+          )}
+          {offers.map(row => (
+            <div key={row.id} className={`rounded-2xl border p-4 ${row.read_at ? 'bg-white border-stone-200' : 'bg-amber-50 border-amber-200'}`}>
+              <div className="flex justify-between gap-3">
+                <p className="font-semibold text-stone-900">{row.title}</p>
+                <p className="text-xs text-stone-400 shrink-0">{when(row.created_at)}</p>
+              </div>
+              <p className="text-sm text-stone-700 mt-2 whitespace-pre-wrap">{row.body}</p>
+            </div>
+          ))}
+        </div>
       )}
 
       {tab === 'night' && (

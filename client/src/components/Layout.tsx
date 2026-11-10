@@ -26,6 +26,7 @@ const NAV_ITEMS = [
   { path: '/targets', label: 'Targets & Scores', icon: '🎯' },
   { path: '/wallet', label: 'Incentive Wallet', icon: '👛' },
   { path: '/agents', label: 'Agent Network', icon: '🌐' },
+  { path: '/agent-offers', label: 'Agent offers', icon: '📣' },
   { path: '/agent-rewards', label: 'Agent free nights', icon: '🌙' },
   { path: '/agents/due', label: 'My Follow-ups', icon: '🔔', badge: true },
   { path: '/reports', label: 'Reports', icon: '📈' },

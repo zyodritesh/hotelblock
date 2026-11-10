@@ -22,6 +22,7 @@ import Agents from './pages/Agents';
 import AgentDue from './pages/AgentDue';
 import Wallet from './pages/Wallet';
 import AgentPortal from './pages/AgentPortal';
+import AgentOffers from './pages/AgentOffers';
 import AgentRewards from './pages/AgentRewards';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -64,6 +65,7 @@ export default function App() {
         <Route path="/reports" element={<RequireAuth><Reports /></RequireAuth>} />
         <Route path="/settings" element={<RequireAuth><RequireAdmin><Settings /></RequireAdmin></RequireAuth>} />
         <Route path="/agent" element={<RequireAuth><AgentPortal /></RequireAuth>} />
+        <Route path="/agent-offers" element={<RequireAuth><AgentOffers /></RequireAuth>} />
         <Route path="/agent-rewards" element={<RequireAuth><AgentRewards /></RequireAuth>} />
         <Route path="/agents" element={<RequireAuth><Agents /></RequireAuth>} />
         <Route path="/agents/due" element={<RequireAuth><AgentDue /></RequireAuth>} />
