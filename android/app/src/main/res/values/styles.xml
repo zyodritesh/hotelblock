@@ -3,5 +3,9 @@
     <style name="Theme.HotelBlock" parent="@android:style/Theme.NoTitleBar">
         <item name="android:windowBackground">@color/backgroundColor</item>
         <item name="android:windowIsTranslucent">false</item>
+        <item name="android:statusBarColor">#FFFFFF</item>
+        <item name="android:navigationBarColor">#FFFFFF</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
     </style>
 </resources>

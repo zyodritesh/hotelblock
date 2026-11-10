@@ -2,6 +2,15 @@ export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
 }
 
+export function formatAxisCurrency(amount: number): string {
+  const n = Math.abs(amount);
+  const sign = amount < 0 ? '-' : '';
+  if (n >= 10000000) return `${sign}${(n / 10000000).toFixed(n >= 100000000 ? 0 : 1)}Cr`;
+  if (n >= 100000) return `${sign}${(n / 100000).toFixed(n >= 1000000 ? 0 : 1)}L`;
+  if (n >= 1000) return `${sign}${(n / 1000).toFixed(0)}k`;
+  return `${sign}${Math.round(n)}`;
+}
+
 export function todayISO(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

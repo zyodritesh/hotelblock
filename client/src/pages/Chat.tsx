@@ -54,6 +54,7 @@ export default function Chat() {
   const [groupOpen, setGroupOpen] = useState(false);
   const [groupTitle, setGroupTitle] = useState('');
   const [groupIds, setGroupIds] = useState<string[]>([]);
+  const [menuId, setMenuId] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const typedAt = useRef(0);
@@ -232,36 +233,50 @@ export default function Chat() {
 
   const call = () => {
     if (!conversation) return;
-    if (conversation.is_group) startGroupCall(conversation.id, conversation.title);
-    else {
-      const other = conversation.members.find(member => member.id !== me?.id);
-      if (other) startOutgoing(other);
-    }
+    const run = conversation.is_group
+      ? startGroupCall(conversation.id, conversation.title)
+      : (() => {
+          const other = conversation.members.find(member => member.id !== me?.id);
+          return other ? startOutgoing(other) : Promise.resolve();
+        })();
+    run.catch((err: any) => setError(err?.message || 'Allow the microphone, then try the call again'));
+  };
+
+  const when = (iso?: string) => {
+    if (!iso) return '';
+    const date = new Date(iso);
+    const now = new Date();
+    if (date.toDateString() === now.toDateString()) return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
   };
 
   if (!userId && !conversationId) {
     return (
-      <div className="max-w-lg mx-auto space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900">💬 Team chat</h1>
-            <p className="text-xs text-gray-500">Direct chats and groups. @ someone to bring them in.</p>
+      <div className="max-w-lg mx-auto h-full flex flex-col bg-white lg:bg-transparent">
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-100 lg:border-0 lg:px-0">
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold text-gray-900">Messages</h1>
+            <p className="text-xs text-gray-500">Team chats and groups</p>
           </div>
-          <button type="button" className="btn-primary" onClick={() => setGroupOpen(true)}>New group</button>
+          <button type="button" className="shrink-0 h-10 px-4 rounded-full bg-blue-600 text-white text-sm font-semibold" onClick={() => setGroupOpen(true)}>New group</button>
         </div>
-        {error && <div className="bg-red-50 text-red-700 rounded-lg px-3 py-2 text-sm">{error}</div>}
-        <div className="space-y-2">
+        {error && <div className="mx-4 mt-3 bg-red-50 text-red-700 rounded-lg px-3 py-2 text-sm">{error}</div>}
+        <div className="flex-1 overflow-y-auto">
+          {threads.length === 0 && <p className="px-4 py-10 text-sm text-gray-400 text-center">No chats yet. Open Phone and tap Chat on a teammate.</p>}
           {threads.map(thread => (
-            <button key={thread.id} type="button" className="w-full bg-white border border-gray-200 rounded-xl px-3 py-3 flex items-center gap-3 text-left" onClick={() => navigate(thread.path)}>
-              <div className="relative w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-semibold">
-                {thread.is_group ? '👥' : thread.title[0]}
-                {thread.online && <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white rounded-full" />}
+            <button key={thread.id} type="button" className="w-full px-4 py-3 flex items-center gap-3 text-left border-b border-gray-100 hover:bg-gray-50" onClick={() => navigate(thread.path)}>
+              <div className="relative w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center font-semibold shrink-0">
+                {thread.is_group ? thread.members.length : (thread.title[0] || '?')}
+                {thread.online && <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-gray-900 truncate">{thread.title}</p>
-                <p className="text-xs text-gray-500 truncate">{thread.last?.body || (thread.is_group ? `${thread.members.length} people` : 'No messages yet')}</p>
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className="font-semibold text-gray-900 truncate">{thread.title}</p>
+                  <span className="text-[11px] text-gray-400 shrink-0">{when(thread.last?.created_at)}</span>
+                </div>
+                <p className="text-sm text-gray-500 truncate mt-0.5">{thread.last?.body || (thread.is_group ? `${thread.members.length} people` : 'No messages yet')}</p>
               </div>
-              {thread.unread > 0 && <span className="bg-red-500 text-white text-xs font-bold rounded-full min-w-[20px] h-5 px-1 flex items-center justify-center">{thread.unread}</span>}
+              {thread.unread > 0 && <span className="bg-blue-600 text-white text-xs font-bold rounded-full min-w-[22px] h-[22px] px-1 flex items-center justify-center shrink-0">{thread.unread}</span>}
             </button>
           ))}
         </div>
@@ -285,91 +300,99 @@ export default function Chat() {
     );
   }
 
+  const other = conversation?.members.find(member => member.id !== me?.id);
+  const subtitle = conversation?.is_group
+    ? conversation.members.map(member => member.name).join(', ')
+    : other ? roleLabel(other.role) : '';
+
   return (
-    <div className="max-w-lg mx-auto h-full flex flex-col">
-      <div className="flex items-center gap-2 pb-3">
-        <Link to="/chat" className="text-blue-600 text-sm">←</Link>
+    <div className="h-full flex flex-col bg-slate-100 max-w-lg mx-auto lg:max-w-none lg:rounded-2xl lg:overflow-hidden lg:border lg:border-gray-200">
+      <div className="shrink-0 bg-white border-b border-gray-200 px-3 py-2 flex items-center gap-2" style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
+        <Link to="/chat" className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-gray-700 text-xl" aria-label="Back to messages">←</Link>
+        <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-semibold shrink-0">
+          {conversation?.is_group ? conversation.members.length : (conversation?.title?.[0] || '?')}
+        </div>
         <div className="flex-1 min-w-0">
           <p className="font-semibold text-gray-900 truncate">{conversation?.title || 'Chat'}</p>
-          <p className="text-xs text-gray-500 truncate">{conversation?.is_group ? conversation.members.map(m => m.name).join(', ') : (conversation?.members.find(m => m.id !== me?.id) ? roleLabel(conversation.members.find(m => m.id !== me?.id)?.role) : '')}</p>
+          <p className="text-xs text-gray-500 truncate">{typingLabel || subtitle}</p>
         </div>
-        <button type="button" className="w-10 h-10 rounded-full bg-green-600 text-white" onClick={call} title={conversation?.is_group ? 'Group call' : 'Call'}>☎</button>
+        <button type="button" className="shrink-0 h-10 px-4 rounded-full bg-green-600 text-white text-sm font-semibold" onClick={call}>Call</button>
       </div>
-      {error && <div className="bg-red-50 text-red-700 rounded-lg px-3 py-2 mb-2 text-sm">{error}</div>}
-      <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+      {error && <div className="mx-3 mt-2 bg-red-50 text-red-700 rounded-lg px-3 py-2 text-sm">{error}</div>}
+      <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-2">
         {messages.map(message => {
           if (message.kind === 'system') {
             return <p key={message.id} className="text-center text-xs text-gray-400 py-1">{message.body}</p>;
           }
           const mine = message.from_user_id === me?.id;
+          const open = menuId === message.id;
           return (
             <div key={message.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${mine ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-900'}`}>
-                {conversation?.is_group && !mine && <p className="text-[11px] font-semibold mb-0.5 opacity-80">{message.from_name}</p>}
+              <button type="button" className={`max-w-[82%] rounded-2xl px-3 py-2 text-left text-sm ${mine ? 'bg-blue-600 text-white rounded-br-md' : 'bg-white text-gray-900 rounded-bl-md shadow-sm'}`} onClick={() => mine && !message.deleted_at && setMenuId(open ? null : message.id)}>
+                {conversation?.is_group && !mine && <p className="text-[11px] font-semibold text-blue-700 mb-0.5">{message.from_name}</p>}
                 {message.deleted_at ? (
-                  <p className="italic opacity-70">This message was deleted</p>
+                  <p className="italic opacity-70">Message deleted</p>
                 ) : (
                   <>
                     {!!message.attachments?.length && (
                       <div className="grid grid-cols-2 gap-1 mb-1">
-                        {message.attachments.map(src => <a key={src} href={src} target="_blank" rel="noreferrer"><img src={src} alt="" className="rounded-lg max-h-40 w-full object-cover" /></a>)}
+                        {message.attachments.map(src => <img key={src} src={src} alt="" className="rounded-lg max-h-40 w-full object-cover" />)}
                       </div>
                     )}
                     {message.body && <p className="whitespace-pre-wrap break-words">{highlight(message.body, names)}</p>}
                   </>
                 )}
-                <p className={`text-[10px] mt-1 ${mine ? 'text-blue-100' : 'text-gray-400'}`}>
+                <p className={`text-[10px] mt-1 text-right ${mine ? 'text-blue-100' : 'text-gray-400'}`}>
                   {timeLabel(message.created_at)}{message.edited_at && !message.deleted_at ? ' · edited' : ''}
                 </p>
-                {mine && !message.deleted_at && (
-                  <div className="flex gap-2 mt-1 text-[11px]">
-                    <button type="button" className={mine ? 'text-blue-100 underline' : 'text-blue-600 underline'} onClick={() => { setEditing(message); setText(message.body); }}>Edit</button>
-                    <button type="button" className={mine ? 'text-blue-100 underline' : 'text-red-500 underline'} onClick={() => removeMessage(message)}>Delete</button>
-                  </div>
+                {open && (
+                  <span className="mt-1 flex gap-3 text-[11px]">
+                    <span className="underline" onClick={e => { e.stopPropagation(); setEditing(message); setText(message.body); setMenuId(null); }}>Edit</span>
+                    <span className="underline" onClick={e => { e.stopPropagation(); setMenuId(null); removeMessage(message); }}>Delete</span>
+                  </span>
                 )}
-              </div>
+              </button>
             </div>
           );
         })}
         <div ref={endRef} />
       </div>
-      {typingLabel && <p className="text-xs text-gray-500 py-1">{typingLabel}</p>}
       {mention !== '' && suggestions.length > 0 && (
-        <div className="bg-white border border-gray-200 rounded-xl mb-2 overflow-hidden">
+        <div className="mx-3 mb-2 bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
           {suggestions.map(person => {
             const inside = conversation?.members.some(member => member.id === person.id);
             return (
-              <button key={person.id} type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex justify-between" onClick={() => addPerson(person)}>
-                <span>@{person.name}</span>
-                <span className="text-xs text-gray-400">{inside ? 'Mention' : 'Add to chat'}</span>
+              <button key={person.id} type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex justify-between gap-3" onClick={() => addPerson(person)}>
+                <span className="truncate">@{person.name}</span>
+                <span className="text-xs text-gray-400 shrink-0">{inside ? 'Mention' : 'Add to chat'}</span>
               </button>
             );
           })}
         </div>
       )}
       {!!photos.length && (
-        <div className="flex gap-2 py-2 overflow-x-auto">
+        <div className="flex gap-2 px-3 pb-2 overflow-x-auto">
           {photos.map((photo, index) => (
-            <div key={`${photo.name}-${index}`} className="relative">
+            <div key={`${photo.name}-${index}`} className="relative shrink-0">
               <img src={URL.createObjectURL(photo)} alt="" className="h-16 w-16 object-cover rounded-lg" />
-              <button type="button" className="absolute -top-1 -right-1 bg-black text-white rounded-full w-5 h-5 text-xs" onClick={() => setPhotos(list => list.filter((_, i) => i !== index))}>×</button>
+              <button type="button" className="absolute -top-1 -right-1 bg-gray-900 text-white rounded-full w-5 h-5 text-xs" onClick={() => setPhotos(list => list.filter((_, i) => i !== index))}>×</button>
             </div>
           ))}
         </div>
       )}
-      {editing && <p className="text-xs text-blue-700">Editing your message. <button type="button" className="underline" onClick={() => { setEditing(null); setText(''); }}>Cancel</button></p>}
-      <form onSubmit={send} className="flex items-end gap-2 pt-2">
-        <label className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center cursor-pointer" title="Add photos">
-          📷
+      {editing && <p className="px-3 pb-1 text-xs text-blue-700">Editing a message. <button type="button" className="underline" onClick={() => { setEditing(null); setText(''); }}>Cancel</button></p>}
+      <form onSubmit={send} className="shrink-0 bg-white border-t border-gray-200 px-3 py-2 flex items-end gap-2" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
+        <label className="shrink-0 h-11 px-3 rounded-full bg-gray-100 text-sm font-medium text-gray-700 flex items-center cursor-pointer">
+          Photo
           <input type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple className="hidden" onChange={e => { setPhotos(list => [...list, ...Array.from(e.target.files || [])].slice(0, 8)); e.target.value = ''; }} />
         </label>
-        <button type="button" className="w-10 h-10 rounded-full bg-gray-100" onClick={() => setEmojiOpen(open => !open)}>😊</button>
-        <textarea ref={inputRef} rows={1} className="input flex-1 resize-none" placeholder="Message. Type @ to add someone" value={text} onChange={e => onType(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} />
-        <button className="btn-primary" disabled={sending || (!text.trim() && !photos.length)}>{editing ? 'Save' : 'Send'}</button>
+        <button type="button" className="shrink-0 h-11 w-11 rounded-full bg-gray-100 text-lg" onClick={() => setEmojiOpen(open => !open)} aria-label="Emoji">☺</button>
+        <textarea ref={inputRef} rows={1} className="input flex-1 min-w-0 resize-none max-h-28" placeholder="Message. @ adds a person" value={text} onChange={e => onType(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} />
+        <button className="shrink-0 h-11 px-4 rounded-full bg-blue-600 text-white text-sm font-semibold disabled:opacity-40" disabled={sending || (!text.trim() && !photos.length)}>{editing ? 'Save' : 'Send'}</button>
       </form>
       {emojiOpen && (
-        <div className="grid grid-cols-8 gap-1 bg-white border border-gray-200 rounded-xl p-2 mt-2">
-          {EMOJI.map(emoji => <button key={emoji} type="button" className="text-xl" onClick={() => insertEmoji(emoji)}>{emoji}</button>)}
+        <div className="grid grid-cols-8 gap-1 bg-white border-t border-gray-200 p-2">
+          {EMOJI.map(emoji => <button key={emoji} type="button" className="h-10 text-xl" onClick={() => insertEmoji(emoji)}>{emoji}</button>)}
         </div>
       )}
     </div>

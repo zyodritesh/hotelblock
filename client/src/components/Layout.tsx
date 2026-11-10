@@ -83,6 +83,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     enablePush().catch(() => {});
   }, [token]);
 
+  const inChatThread = /^\/chat\/.+/.test(location.pathname);
   const activeProperty = properties.find(p => p.id === activePropertyId);
   const brandColor = activeProperty?.brand_color || '#2563eb';
 
@@ -144,7 +145,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   : 'text-gray-300 hover:bg-gray-800 hover:text-white'
               )}
             >
-              <span className="text-base w-5 text-center">{item.icon}</span>
+              <span className="text-base w-6 h-6 flex items-center justify-center shrink-0">{item.icon}</span>
               <span className="flex-1">{item.label}</span>
               {badgeNum > 0 && (
                 <span className="bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
@@ -175,7 +176,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   if (user?.role === 'agent') {
     return (
-      <div className="min-h-screen bg-stone-50">
+      <div className="h-full overflow-y-auto bg-stone-50">
         <header className="bg-stone-950 text-white px-4 py-3 flex items-center justify-between sticky top-0 z-10">
           <div>
             <p className="font-bold tracking-tight">Aayor Agent Club</p>
@@ -189,7 +190,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
+    <div className="flex h-full overflow-hidden bg-gray-50">
       <div className="hidden lg:flex flex-shrink-0">
         <Sidebar />
       </div>
@@ -202,18 +203,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       )}
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <div className="flex items-center justify-between px-4 lg:px-6 py-2 bg-white border-b border-gray-200">
-          <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-gray-600 text-xl">☰</button>
-          <span className="font-bold text-gray-900 lg:hidden truncate">{activeProperty?.name || 'HotelBlock'}</span>
-          <div className="hidden lg:block text-sm text-gray-500">{activeProperty?.name || 'HotelBlock'}</div>
-          <div className="flex items-center gap-2">
+        <div className={`${inChatThread ? 'hidden lg:flex' : 'flex'} items-center gap-2 px-3 lg:px-6 py-2 bg-white border-b border-gray-200`} style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
+          <button onClick={() => setSidebarOpen(true)} className="lg:hidden shrink-0 w-10 h-10 rounded-lg text-gray-700 text-xl flex items-center justify-center" aria-label="Open menu">☰</button>
+          <span className="font-bold text-gray-900 lg:hidden truncate min-w-0 flex-1">{activeProperty?.name || 'HotelBlock'}</span>
+          <div className="hidden lg:block text-sm text-gray-500 flex-1 min-w-0 truncate">{activeProperty?.name || 'HotelBlock'}</div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button type="button" onClick={() => setShowQuickLog(true)} className="lg:hidden text-xs font-semibold text-white bg-blue-600 rounded-full px-3 py-2">Log</button>
             <NotificationBell />
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white lg:hidden" style={{ backgroundColor: brandColor }}>
+            <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white lg:hidden" style={{ backgroundColor: brandColor }}>
               {user?.name?.[0]?.toUpperCase()}
             </div>
           </div>
         </div>
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6 pb-24 lg:pb-6">
+        <main className={`flex-1 min-h-0 overflow-x-hidden ${inChatThread ? 'overflow-hidden p-0 lg:overflow-y-auto lg:p-6' : 'overflow-y-auto p-4 lg:p-6 pb-28 lg:pb-6'}`}>
           {toast && (
             <button type="button" className="mb-3 w-full text-left bg-slate-900 text-white rounded-xl px-4 py-3" onClick={() => { setToast(null); patch({ toast: null }); }}>
               <p className="text-sm font-semibold">{toast.title}</p>

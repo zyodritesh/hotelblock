@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { api } from '../api/client';
-import { formatCurrency, formatDateTime, formatDate, SEGMENT_COLORS, STAGE_COLORS } from '../lib/utils';
+import { formatCurrency, formatAxisCurrency, formatDateTime, formatDate, SEGMENT_COLORS, STAGE_COLORS } from '../lib/utils';
 import KpiCard from '../components/KpiCard';
 import SalesPlanBoard from '../components/SalesPlanBoard';
 import { useAuthStore } from '../store/auth';
@@ -43,9 +43,9 @@ export default function Dashboard() {
             {user?.role === 'call_center' ? 'Access: your own calls and meetings. You can add a lead for anyone in the company.' : user?.role === 'executive' ? 'Access: your own calls, meetings, and proposals. Leads you own or created are visible to you.' : user?.role === 'manager' ? 'Access: every sales executive, plus your own records.' : 'Access: full team, including settings.'}
           </p>
         </div>
-        <div className="flex gap-2">
-          <Link to="/wallet" className="btn-secondary text-sm px-3 py-2">👛 Wallet</Link>
-          <Link to="/attendance" className="btn-primary text-sm px-3 py-2">🕐 Attendance</Link>
+        <div className="flex flex-wrap gap-2">
+          <Link to="/wallet" className="btn-secondary text-sm px-3 py-2">Wallet</Link>
+          <Link to="/attendance" className="btn-primary text-sm px-3 py-2">Attendance</Link>
         </div>
       </div>
 
@@ -74,12 +74,12 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-2">
                 {agentsDue.map((a: any) => (
-                  <div key={a.id} className={`flex items-center justify-between py-2 px-3 rounded-lg border-l-4 ${a.due_status === 'Overdue' ? 'border-red-400 bg-red-50' : a.due_status === 'Due Today' ? 'border-yellow-400 bg-yellow-50' : 'border-gray-300 bg-gray-50'}`}>
-                    <div>
+                  <div key={a.id} className={`flex flex-wrap items-center justify-between gap-2 py-2 px-3 rounded-lg border-l-4 ${a.due_status === 'Overdue' ? 'border-red-400 bg-red-50' : a.due_status === 'Due Today' ? 'border-yellow-400 bg-yellow-50' : 'border-gray-300 bg-gray-50'}`}>
+                    <div className="min-w-0">
                       <span className="text-sm font-medium text-gray-900">{a.name}</span>
                       {a.agency_name && <span className="text-xs text-gray-500 ml-2">{a.agency_name}</span>}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                       {a.days_overdue > 0 && <span className="text-xs text-red-600 font-semibold">+{a.days_overdue}d overdue</span>}
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${a.due_status === 'Overdue' ? 'bg-red-100 text-red-700' : a.due_status === 'Due Today' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'}`}>{a.due_status}</span>
                     </div>
@@ -108,15 +108,25 @@ export default function Dashboard() {
         {/* Pipeline by Stage */}
         <div className="card">
           <h3 className="font-semibold text-gray-800 mb-4">Pipeline by Stage</h3>
+          <div className="sm:hidden space-y-2">
+            {data.pipelineByStage.map((row: any) => (
+              <div key={row.stage} className="flex items-start justify-between gap-3">
+                <span className="text-sm text-gray-700 min-w-0">{row.stage}</span>
+                <span className="text-sm font-semibold text-gray-900 shrink-0">{formatCurrency(row.value)}</span>
+              </div>
+            ))}
+          </div>
+          <div className="hidden sm:block">
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={data.pipelineByStage} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+            <BarChart data={data.pipelineByStage} margin={{ top: 0, right: 8, bottom: 0, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-              <XAxis dataKey="stage" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} />
+              <XAxis dataKey="stage" tick={{ fontSize: 11 }} interval={0} />
+              <YAxis tick={{ fontSize: 11 }} width={40} tickFormatter={(v: number) => formatAxisCurrency(v)} />
               <Tooltip formatter={(v: number) => [formatCurrency(v), 'Value']} />
               <Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
+          </div>
         </div>
 
         {/* Pipeline by Segment */}
@@ -124,9 +134,10 @@ export default function Dashboard() {
           <h3 className="font-semibold text-gray-800 mb-4">Pipeline by Segment</h3>
           <ResponsiveContainer width="100%" height={220}>
             <PieChart>
-              <Pie data={data.pipelineBySegment} dataKey="value" nameKey="segment" cx="50%" cy="50%" outerRadius={80} label={({ segment, percent }) => `${segment} ${(percent * 100).toFixed(0)}%`}>
+              <Pie data={data.pipelineBySegment} dataKey="value" nameKey="segment" cx="50%" cy="50%" outerRadius={72}>
                 {data.pipelineBySegment.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
               </Pie>
+              <Legend wrapperStyle={{ fontSize: 12 }} />
               <Tooltip formatter={(v: number) => formatCurrency(v)} />
             </PieChart>
           </ResponsiveContainer>

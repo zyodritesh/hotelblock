@@ -26,14 +26,15 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-950 to-gray-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <div className="h-full overflow-y-auto bg-gradient-to-br from-gray-900 via-blue-950 to-gray-900">
+      <div className="w-full max-w-md mx-auto px-4 py-8">
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-3xl font-bold text-white mx-auto mb-4">H</div>
           <h1 className="text-3xl font-bold text-white">HotelBlock</h1>
           <p className="text-gray-400 mt-1">Hotel Sales & Call Tracker</p>
-          <a href="/get-app" className="inline-block mt-3 text-sm font-medium text-blue-300 underline">Download the Android app</a>
-          <p className="text-xs text-slate-500 mt-1">If the APK does not save, use the ZIP on the next page. Open it and install hotelblock.apk.</p>
+          {!navigator.userAgent.includes('HotelBlockApp') && (
+            <a href="/get-app" className="inline-block mt-3 text-sm font-medium text-blue-300 underline">Download the Android app</a>
+          )}
         </div>
         <div className="bg-white rounded-2xl shadow-2xl p-8">
           <h2 className="text-xl font-semibold text-gray-900 mb-6">Sign In</h2>

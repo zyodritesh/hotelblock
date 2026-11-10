@@ -187,12 +187,12 @@ export default function Pipeline() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">🔄 Sales Pipeline</h1>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">Sales Pipeline</h1>
           <p className="text-xs text-gray-400 mt-0.5">{leads.length} leads · {formatCurrency(leads.reduce((s, l) => s + l.estimated_revenue, 0))}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button onClick={handleExport} className="btn-secondary text-sm px-3 py-2 hidden sm:flex items-center gap-1">⬇ Export</button>
           <div className="hidden sm:flex border border-gray-200 rounded-lg overflow-hidden">
             <button className={cn('px-3 py-1.5 text-sm', viewMode === 'kanban' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50')} onClick={() => setViewMode('kanban')}>Kanban</button>

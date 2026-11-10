@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import { roleLabel } from '../lib/utils';
 import { startOutgoing } from '../live/session';
 import { enablePush } from '../live/LiveProvider';
+import { dialNumber, openWhatsApp } from '../lib/phone';
 
 interface Person { id: string; name: string; role: string; online?: boolean; }
 interface Contact { id?: string; name: string; phone: string; company?: string; }
@@ -13,20 +14,12 @@ interface Book {
   recent: Contact[];
 }
 
-function digits(phone: string) {
-  let d = phone.replace(/\D/g, '');
-  if (d.length === 10) d = `91${d}`;
-  if (d.startsWith('0') && d.length === 11) d = `91${d.slice(1)}`;
-  return d;
-}
-
-function telHref(phone: string) {
-  const raw = phone.replace(/[^\d+]/g, '');
-  return `tel:${raw || phone}`;
-}
-
-function waHref(phone: string) {
-  return `https://wa.me/${digits(phone)}`;
+function Action({ label, tone, onClick }: { label: string; tone: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className={`shrink-0 h-10 px-3 rounded-full text-white text-xs font-semibold ${tone}`}>
+      {label}
+    </button>
+  );
 }
 
 export default function Phone() {
@@ -84,14 +77,14 @@ export default function Phone() {
       {error && <div className="bg-red-50 text-red-700 rounded-lg px-3 py-2 text-sm">{error}</div>}
       {notice && <div className="bg-green-50 text-green-700 rounded-lg px-3 py-2 text-sm">{notice}</div>}
 
-      <div className="bg-slate-900 text-white rounded-2xl p-4 space-y-3">
+      {!navigator.userAgent.includes('HotelBlockApp') && <div className="bg-slate-900 text-white rounded-2xl p-4 space-y-3">
         <p className="text-sm">Add HotelBlock to your home screen, then allow notifications. When Riya adds a lead for you, the phone shows it even if the app is closed.</p>
         <div className="flex flex-wrap gap-2">
           <button type="button" className="bg-white text-slate-900 rounded-full px-3 py-1.5 text-sm font-medium" onClick={allow}>Allow notifications</button>
           {install && <button type="button" className="bg-blue-500 rounded-full px-3 py-1.5 text-sm font-medium" onClick={installApp}>Add to home screen</button>}
         </div>
         <p className="text-[11px] text-slate-400">On iPhone: Share, then Add to Home Screen. Notifications work after the icon is on the home screen.</p>
-      </div>
+      </div>}
 
       <section>
         <h2 className="text-sm font-semibold text-gray-700 mb-2">Team</h2>
@@ -106,8 +99,8 @@ export default function Phone() {
                 <p className="font-medium text-gray-900 truncate">{person.name}</p>
                 <p className="text-xs text-gray-500">{roleLabel(person.role)}{person.online ? ' · online' : ''}</p>
               </div>
-              <button type="button" className="w-10 h-10 rounded-full bg-green-600 text-white" title="In-app call" onClick={() => callTeam(person)}>☎</button>
-              <button type="button" className="w-10 h-10 rounded-full bg-blue-600 text-white" title="Chat" onClick={() => navigate(`/chat/${person.id}`)}>💬</button>
+              <Action label="Call" tone="bg-green-600" onClick={() => callTeam(person)} />
+              <Action label="Chat" tone="bg-blue-600" onClick={() => navigate(`/chat/${person.id}`)} />
             </div>
           ))}
         </div>
@@ -129,8 +122,8 @@ export default function Phone() {
                 <p className="font-medium text-gray-900 truncate">{contact.name}</p>
                 <p className="text-xs text-gray-500 truncate">{[contact.company, contact.phone].filter(Boolean).join(' · ')}</p>
               </div>
-              <a className="w-10 h-10 rounded-full bg-green-600 text-white flex items-center justify-center" href={telHref(contact.phone)} title="Call">☎</a>
-              <a className="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center" href={waHref(contact.phone)} target="_blank" rel="noreferrer" title="WhatsApp">W</a>
+              <Action label="Call" tone="bg-green-600" onClick={() => dialNumber(contact.phone)} />
+              <Action label="WhatsApp" tone="bg-emerald-600" onClick={() => openWhatsApp(contact.phone)} />
             </div>
           ))}
         </div>
@@ -146,8 +139,8 @@ export default function Phone() {
                   <p className="font-medium text-gray-900 truncate">{contact.name || contact.phone}</p>
                   <p className="text-xs text-gray-500 truncate">{contact.phone}</p>
                 </div>
-                <a className="w-10 h-10 rounded-full bg-green-600 text-white flex items-center justify-center" href={telHref(contact.phone)}>☎</a>
-                <a className="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center" href={waHref(contact.phone)} target="_blank" rel="noreferrer">W</a>
+                <Action label="Call" tone="bg-green-600" onClick={() => dialNumber(contact.phone)} />
+                <Action label="WhatsApp" tone="bg-emerald-600" onClick={() => openWhatsApp(contact.phone)} />
               </div>
             ))}
           </div>

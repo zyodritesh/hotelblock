@@ -3,8 +3,11 @@
 @tailwind utilities;
 
 @layer base {
+  html, body, #root {
+    height: 100%;
+  }
   body {
-    @apply bg-gray-50 text-gray-900 font-sans;
+    @apply bg-gray-50 text-gray-900 font-sans overflow-hidden;
   }
   * {
     @apply box-border;
@@ -28,7 +31,7 @@
     @apply btn bg-transparent text-gray-600 hover:bg-gray-100;
   }
   .card {
-    @apply bg-white rounded-xl shadow-sm border border-gray-100 p-5;
+    @apply bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-5;
   }
   .input {
     @apply w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent;
@@ -46,10 +49,10 @@
     @apply border-b border-gray-100 hover:bg-gray-50 transition-colors;
   }
   .page-header {
-    @apply mb-6 flex items-center justify-between;
+    @apply mb-6 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between;
   }
   .page-title {
-    @apply text-2xl font-bold text-gray-900;
+    @apply text-xl leading-tight font-bold text-gray-900 sm:text-2xl;
   }
 }
 

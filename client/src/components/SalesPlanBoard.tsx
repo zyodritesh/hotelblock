@@ -130,9 +130,9 @@ function measure(kind: string, n: number) {
 function Bar({ line }: { line: Line }) {
   if (line.target <= 0) {
     return (
-      <div className="flex items-center justify-between text-sm py-1">
-        <span className="text-gray-600">{line.label}</span>
-        <span className="font-semibold text-gray-900">{show(line)}</span>
+      <div className="flex items-start justify-between gap-3 text-sm py-1">
+        <span className="text-gray-600 min-w-0">{line.label}</span>
+        <span className="font-semibold text-gray-900 shrink-0 text-right">{show(line)}</span>
       </div>
     );
   }
@@ -140,9 +140,9 @@ function Bar({ line }: { line: Line }) {
   const tone = pct >= 100 ? 'bg-green-500' : pct >= 50 ? 'bg-amber-500' : 'bg-blue-500';
   return (
     <div className="py-1.5">
-      <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
-        <span>{line.label}</span>
-        <span className="font-medium text-gray-900">{show(line)} / {targetText(line)}</span>
+      <div className="flex items-start justify-between gap-3 text-xs text-gray-600 mb-1">
+        <span className="min-w-0">{line.label}</span>
+        <span className="font-medium text-gray-900 shrink-0 text-right">{show(line)} / {targetText(line)}</span>
       </div>
       <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
         <div className={`h-full ${tone}`} style={{ width: `${pct}%` }} />
