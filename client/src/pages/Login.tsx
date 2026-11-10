@@ -32,6 +32,7 @@ export default function Login() {
           <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-3xl font-bold text-white mx-auto mb-4">H</div>
           <h1 className="text-3xl font-bold text-white">HotelBlock</h1>
           <p className="text-gray-400 mt-1">Hotel Sales & Call Tracker</p>
+          <p className="text-xs text-slate-400 mt-2">On a phone: Share, then Add to Home Screen. On Android: menu, then Install app.</p>
         </div>
         <div className="bg-white rounded-2xl shadow-2xl p-8">
           <h2 className="text-xl font-semibold text-gray-900 mb-6">Sign In</h2>

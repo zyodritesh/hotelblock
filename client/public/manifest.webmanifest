@@ -1,7 +1,7 @@
 {
   "name": "HotelBlock",
   "short_name": "HotelBlock",
-  "start_url": "/phone",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#0f172a",
