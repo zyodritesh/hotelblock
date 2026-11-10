@@ -79,7 +79,7 @@ router.get('/', (req: AuthRequest, res: Response) => {
   if (country) { where += ' AND a.country = ?'; params.push(country); }
   if (tier) { where += ' AND a.tier = ?'; params.push(tier); }
   if (status) { where += ' AND a.status = ?'; params.push(status); }
-  if (property_id) { where += ' AND a.property_id = ?'; params.push(property_id); }
+  if (property_id) { where += ' AND (a.property_id = ? OR a.property_id IS NULL OR a.user_id IS NOT NULL)'; params.push(property_id); }
   const total = (db.prepare(`SELECT COUNT(*) as c ${where}`).get(...params) as any).c;
 
   let q = `SELECT a.*, u.name as assigned_name,
