@@ -100,7 +100,7 @@ router.get('/leaderboard', (req: AuthRequest, res: Response) => {
     ? db.prepare('SELECT id, name, role FROM users WHERE id=?').all(req.user!.id)
     : req.user!.role === 'manager'
       ? db.prepare("SELECT id, name, role FROM users WHERE active=1 AND role IN ('executive','manager')").all()
-      : db.prepare('SELECT id, name, role FROM users WHERE active=1').all()) as any[];
+      : db.prepare("SELECT id, name, role FROM users WHERE active=1 AND role != 'agent'").all()) as any[];
   const leaderboard = users.map((u: any) => {
     const monthStart = `${month}-01`, monthEnd = `${month}-31`;
     const hotel = String(req.query.property_id || '');

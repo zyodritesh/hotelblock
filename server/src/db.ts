@@ -346,8 +346,61 @@ export function initDb() {
       property_id TEXT,
       notes TEXT,
       created_by TEXT,
+      user_id TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL
+      FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS agent_points (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      points INTEGER NOT NULL,
+      reason TEXT NOT NULL,
+      lead_id TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS agent_vouchers (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      code TEXT NOT NULL,
+      nights INTEGER NOT NULL,
+      points_spent INTEGER NOT NULL,
+      property_id TEXT,
+      guest_name TEXT NOT NULL,
+      event_date TEXT,
+      event_end_date TEXT,
+      status TEXT NOT NULL DEFAULT 'issued',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS agent_wallet (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      amount REAL NOT NULL,
+      reason TEXT NOT NULL,
+      lead_id TEXT,
+      incentive_id TEXT,
+      month TEXT,
+      note TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS agent_incentives (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      task TEXT NOT NULL,
+      metric TEXT NOT NULL,
+      target_value REAL NOT NULL DEFAULT 0,
+      pay_type TEXT NOT NULL,
+      rate REAL NOT NULL,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS agent_followups (
@@ -537,6 +590,10 @@ export function initDb() {
     "ALTER TABLE team_calls ADD COLUMN conversation_id TEXT",
     "ALTER TABLE team_calls ADD COLUMN is_group INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE team_call_signals ADD COLUMN to_user_id TEXT",
+    "ALTER TABLE agents ADD COLUMN user_id TEXT",
+    "ALTER TABLE leads ADD COLUMN agent_id TEXT",
+    "ALTER TABLE agents ADD COLUMN commission_type TEXT DEFAULT 'percent'",
+    "ALTER TABLE agents ADD COLUMN commission_rate REAL DEFAULT 0",
   ];
 
   for (const sql of migrations) {
@@ -586,6 +643,7 @@ export function initDb() {
   seedProposalCatalog(db);
   seedIncentives(db);
   seedSalesTeam(db);
+  ensureAgentLogins(db);
   ensureHotels(db);
   spreadExistingRecordsAcrossHotels(db);
 }
@@ -609,6 +667,68 @@ Rates cover only the line items listed. Extra guests, extended hours, additional
 
 5. Confirmation
 Dates and venues are held only after written acceptance of this proposal and receipt of the advance.`;
+
+function ensureAgentLogins(database: typeof db) {
+  const bcrypt = require('bcryptjs');
+  const { v4: uuidv4 } = require('uuid');
+  const demos = [
+    {
+      email: 'amit@agent.com', name: 'Amit Sharma', agency: 'Amit Travels', city: 'Delhi',
+      phone: '+91-98100-11001', ownerEmail: 'krishan@hotel.com',
+    },
+    {
+      email: 'neelam@agent.com', name: 'Neelam Joshi', agency: 'Neelam Weddings', city: 'Jaipur',
+      phone: '+91-98290-22002', ownerEmail: 'devraj@hotel.com',
+    },
+  ];
+  const hash = bcrypt.hashSync('agent123', 10);
+  for (const demo of demos) {
+    let user = database.prepare('SELECT id FROM users WHERE email=?').get(demo.email) as { id: string } | undefined;
+    if (!user) {
+      const id = uuidv4();
+      database.prepare('INSERT INTO users (id, name, email, password_hash, role) VALUES (?,?,?,?,?)').run(id, demo.name, demo.email, hash, 'agent');
+      user = { id };
+    }
+    const owner = database.prepare('SELECT id FROM users WHERE email=?').get(demo.ownerEmail) as { id: string } | undefined;
+    let agent = database.prepare('SELECT id FROM agents WHERE email=?').get(demo.email) as { id: string } | undefined;
+    if (!agent) {
+      const id = uuidv4();
+      database.prepare(`INSERT INTO agents (id, name, agency_name, type, city, country, phone, email, tier, status, assigned_to, user_id, notes, created_by)
+        VALUES (?,?,?,?,?,?,?,?, 'A', 'Active', ?, ?, ?, ?)`).run(
+        id, demo.name, demo.agency, 'Travel Agent', demo.city, 'India', demo.phone, demo.email,
+        owner?.id || null, user.id, 'Agent club login', user.id,
+      );
+      agent = { id };
+    } else {
+      database.prepare('UPDATE agents SET user_id=? WHERE id=? AND (user_id IS NULL OR user_id=\'\')').run(user.id, agent.id);
+    }
+  }
+  if (!database.prepare(`SELECT value FROM settings WHERE key='agent_loyalty'`).get()) {
+    database.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run('agent_loyalty', JSON.stringify({
+      tiers: [
+        { name: 'Partner', lifetime: 0, multiplier: 1, nightPrice: 8000 },
+        { name: 'Silver', lifetime: 50000, multiplier: 1.25, nightPrice: 6000 },
+        { name: 'Gold', lifetime: 200000, multiplier: 1.5, nightPrice: 5000 },
+      ],
+    }));
+  }
+  if (!database.prepare(`SELECT value FROM settings WHERE key='agent_pay_seeded'`).get()) {
+    const amit = database.prepare(`SELECT id FROM agents WHERE email='amit@agent.com'`).get() as { id: string } | undefined;
+    const neelam = database.prepare(`SELECT id FROM agents WHERE email='neelam@agent.com'`).get() as { id: string } | undefined;
+    if (amit) {
+      database.prepare(`UPDATE agents SET commission_type='percent', commission_rate=8 WHERE id=?`).run(amit.id);
+      database.prepare(`INSERT INTO agent_incentives (id, agent_id, task, metric, target_value, pay_type, rate, created_at)
+        VALUES (?,?,?,?,?,?,?,?)`).run(uuidv4(), amit.id, '5 enquiries this month', 'enquiries', 5, 'fixed', 2000, new Date().toISOString());
+      database.prepare(`INSERT INTO agent_wallet (id, agent_id, amount, reason, note, created_at) VALUES (?,?,?,?,?,?)`).run(
+        uuidv4(), amit.id, 4000, 'opening', 'Earlier confirmed stay', new Date().toISOString(),
+      );
+    }
+    if (neelam) {
+      database.prepare(`UPDATE agents SET commission_type='fixed', commission_rate=5000 WHERE id=?`).run(neelam.id);
+    }
+    database.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run('agent_pay_seeded', '1');
+  }
+}
 
 function ensureHotels(database: typeof db) {
   const already = database.prepare(`SELECT value FROM settings WHERE key='hotels_bootstrapped'`).get() as { value: string } | undefined;

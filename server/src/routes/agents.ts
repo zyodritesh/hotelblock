@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import db from '../db';
 import { authenticate, denyUnlessOwner, ownScope, AuthRequest } from '../middleware/auth';
 import { followUpDate, todayISO as todayLocal } from '../dates';
+import { readCommission } from '../agentClub';
 
 const router = Router();
 router.use(authenticate);
@@ -132,7 +133,7 @@ router.get('/compliance', (req: AuthRequest, res: Response) => {
 
   const users = ownScope(role)
     ? db.prepare('SELECT id, name FROM users WHERE id=?').all(userId)
-    : db.prepare('SELECT id, name FROM users WHERE active=1').all();
+    : db.prepare("SELECT id, name FROM users WHERE active=1 AND role != 'agent'").all();
 
   const stats = (users as any[]).map((u: any) => {
     const totalAssigned = (db.prepare("SELECT COUNT(*) as c FROM agents WHERE assigned_to=? AND status='Active'").get(u.id) as any).c;
@@ -174,12 +175,17 @@ router.get('/:id', (req: AuthRequest, res: Response) => {
 router.post('/', (req: AuthRequest, res: Response) => {
   const { name, agency_name, type, country, city, phone, email, website, specialization, tier, status, assigned_to, property_id, notes, frequency } = req.body;
   if (!name) return res.status(400).json({ error: 'name required' });
+  const canSetPay = ['admin', 'manager'].includes(req.user!.role);
+  const commission = canSetPay ? readCommission(req.body || {}) : null;
+  if (commission && 'error' in commission) return res.status(400).json(commission);
   const id = uuidv4();
   const now = new Date().toISOString();
-  db.prepare(`INSERT INTO agents (id,name,agency_name,type,country,city,phone,email,website,specialization,tier,status,assigned_to,property_id,notes,created_by,created_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+  db.prepare(`INSERT INTO agents (id,name,agency_name,type,country,city,phone,email,website,specialization,tier,status,assigned_to,property_id,notes,created_by,created_at,commission_type,commission_rate)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     id, name, agency_name||'', type||'Travel Agent', country||'', city||'', phone||'', email||'', website||'', specialization||'', tier||'B', status||'Active',
-    ownScope(req.user!.role) ? req.user!.id : (assigned_to || req.user!.id), property_id||null, notes||'', req.user!.id, now
+    ownScope(req.user!.role) ? req.user!.id : (assigned_to || req.user!.id), property_id||null, notes||'', req.user!.id, now,
+    commission && !('error' in commission) ? commission.type : 'percent',
+    commission && !('error' in commission) ? commission.rate : 0,
   );
   // Set up followup cadence
   const freq = frequency || 'Monthly';
@@ -203,6 +209,11 @@ router.put('/:id', (req: AuthRequest, res: Response) => {
   if (denyUnlessOwner(req, res, agent.assigned_to)) return;
   const { name, agency_name, type, country, city, phone, email, website, specialization, tier, status, assigned_to, property_id, notes, frequency, next_due_date } = req.body;
   const assignee = ownScope(req.user!.role) ? req.user!.id : (assigned_to ?? agent.assigned_to);
+  const canSetPay = ['admin', 'manager'].includes(req.user!.role);
+  const commission = canSetPay ? readCommission(req.body || {}) : null;
+  if (commission && 'error' in commission) return res.status(400).json(commission);
+  const commissionType = commission && !('error' in commission) ? commission.type : (agent.commission_type || 'percent');
+  const commissionRate = commission && !('error' in commission) ? commission.rate : (Number(agent.commission_rate) || 0);
   if (next_due_date) {
     const due = String(next_due_date).slice(0, 10);
     const existingDue = db.prepare('SELECT next_due_date FROM agent_followups WHERE agent_id=?').get(req.params.id) as any;
@@ -212,11 +223,11 @@ router.put('/:id', (req: AuthRequest, res: Response) => {
       if (parsed.error) return res.status(400).json({ error: parsed.error });
     }
   }
-  db.prepare(`UPDATE agents SET name=?,agency_name=?,type=?,country=?,city=?,phone=?,email=?,website=?,specialization=?,tier=?,status=?,assigned_to=?,property_id=?,notes=? WHERE id=?`).run(
+  db.prepare(`UPDATE agents SET name=?,agency_name=?,type=?,country=?,city=?,phone=?,email=?,website=?,specialization=?,tier=?,status=?,assigned_to=?,property_id=?,notes=?,commission_type=?,commission_rate=? WHERE id=?`).run(
     name??agent.name, agency_name??agent.agency_name, type??agent.type, country??agent.country, city??agent.city,
     phone??agent.phone, email??agent.email, website??agent.website, specialization??agent.specialization,
     tier??agent.tier, status??agent.status, assignee, property_id??agent.property_id,
-    notes??agent.notes, req.params.id
+    notes??agent.notes, commissionType, commissionRate, req.params.id
   );
   // Update cadence if frequency changed
   if (next_due_date) {

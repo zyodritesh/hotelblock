@@ -17,7 +17,7 @@ export default function Login() {
     try {
       const data = await api.post<{ token: string; user: any }>('/auth/login', { email, password });
       login(data.user, data.token);
-      navigate('/');
+      navigate(data.user?.role === 'agent' ? '/agent' : '/');
     } catch (err: any) {
       setError(err.message || 'Login failed');
     } finally {
@@ -60,6 +60,8 @@ export default function Login() {
               { label: 'Krishan — 20 agents a day', email: 'krishan@hotel.com', password: 'krishan123' },
               { label: 'Vivek — 30 agents a day', email: 'vivek@hotel.com', password: 'vivek123' },
               { label: 'Riya — events and incoming calls', email: 'riya@hotel.com', password: 'riya123' },
+              { label: 'Agent — Amit Travels, ₹4,000 wallet', email: 'amit@agent.com', password: 'agent123' },
+              { label: 'Agent — Neelam Weddings, starts at ₹0', email: 'neelam@agent.com', password: 'agent123' },
             ].map(demo => (
               <button key={demo.email} type="button" onClick={() => { setEmail(demo.email); setPassword(demo.password); }}
                 className="w-full text-left text-xs border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50">

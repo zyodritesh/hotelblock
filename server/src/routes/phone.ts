@@ -10,7 +10,7 @@ router.get('/', (req: AuthRequest, res: Response) => {
   const me = req.user!.id;
   const q = String(req.query.q || '').trim().toLowerCase();
   const own = ownScope(req.user!.role);
-  const team = (db.prepare('SELECT id, name, role FROM users WHERE active=1 AND id!=? ORDER BY name').all(me) as { id: string; name: string; role: string }[])
+  const team = (db.prepare("SELECT id, name, role FROM users WHERE active=1 AND role != 'agent' AND id!=? ORDER BY name").all(me) as { id: string; name: string; role: string }[])
     .map(u => ({ ...u, online: isOnline(u.id) }));
 
   let contactSql = `SELECT c.id, c.name, c.phone, IFNULL(a.name, '') as company

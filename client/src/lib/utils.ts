@@ -52,6 +52,7 @@ export function roleLabel(role?: string | null): string {
     manager: 'Sales manager',
     executive: 'Sales executive',
     call_center: 'Call center',
+    agent: 'Travel agent',
   } as Record<string, string>)[role || ''] || (role || '');
 }
 

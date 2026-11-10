@@ -19,6 +19,12 @@ interface Agent {
   last_contact_date: string | null; next_due_date: string | null;
   due_status: string; days_overdue: number; followup_id: string | null;
   created_at: string;
+  commission_type?: string; commission_rate?: number;
+}
+
+interface AgentIncentive {
+  id: string; task: string; metric: string; target_value: number; pay_type: string; rate: number;
+  actual: number; paid: boolean; paid_amount: number;
 }
 
 interface ActivityLog {
@@ -30,6 +36,7 @@ const BLANK_AGENT = {
   name: '', agency_name: '', type: 'Travel Agent', country: '', city: '',
   phone: '', email: '', website: '', specialization: '', tier: 'B',
   status: 'Active', assigned_to: '', notes: '', frequency: 'Monthly', next_due_date: '',
+  commission_type: 'percent', commission_rate: '0',
 };
 
 export default function Agents() {
@@ -55,6 +62,8 @@ export default function Agents() {
   const [showLogModal, setShowLogModal] = useState(false);
   const [logForm, setLogForm] = useState({ type: 'Call', outcome: '', notes: '', contacted_at: todayISO(), next_due_date: addDaysISO(todayISO(), 30) });
   const [logSaving, setLogSaving] = useState(false);
+  const [pay, setPay] = useState<{ balance: number; incentives: AgentIncentive[] } | null>(null);
+  const [incentiveForm, setIncentiveForm] = useState({ task: '', metric: 'enquiries', target_value: '5', pay_type: 'fixed', rate: '2000' });
   const [sortField, setSortField] = useState<'name' | 'tier' | 'next_due_date' | 'last_contact_date'>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
@@ -93,7 +102,7 @@ export default function Agents() {
 
   const openCreate = () => { setForm({ ...BLANK_AGENT }); setEditAgent(null); setShowForm(true); };
   const openEdit = (a: Agent) => {
-    setForm({ name: a.name, agency_name: a.agency_name, type: a.type, country: a.country, city: a.city, phone: a.phone, email: a.email, website: a.website, specialization: a.specialization, tier: a.tier, status: a.status, assigned_to: a.assigned_to || '', notes: a.notes, frequency: a.frequency || 'Monthly', next_due_date: (a.next_due_date || '').slice(0, 10) });
+    setForm({ name: a.name, agency_name: a.agency_name, type: a.type, country: a.country, city: a.city, phone: a.phone, email: a.email, website: a.website, specialization: a.specialization, tier: a.tier, status: a.status, assigned_to: a.assigned_to || '', notes: a.notes, frequency: a.frequency || 'Monthly', next_due_date: (a.next_due_date || '').slice(0, 10), commission_type: a.commission_type === 'fixed' ? 'fixed' : 'percent', commission_rate: String(a.commission_rate ?? 0) });
     setEditAgent(a);
     setShowForm(true);
   };
@@ -102,7 +111,7 @@ export default function Agents() {
     if (!form.name.trim()) return;
     setSaving(true);
     try {
-      const body = { ...form, property_id: activePropertyId };
+      const body = { ...form, property_id: activePropertyId, commission_rate: Number(form.commission_rate) || 0 };
       if (editAgent) {
         await fetch(`${API}/agents/${editAgent.id}`, { method: 'PUT', headers: headers(), body: JSON.stringify(body) });
       } else {
@@ -126,11 +135,40 @@ export default function Agents() {
     setShowLogModal(true);
   };
 
+  const loadPay = async (id: string) => {
+    if (!isAdminOrManager) { setPay(null); return; }
+    const res = await fetch(`${API}/agent-portal/agents/${id}/pay`, { headers: headers() });
+    if (!res.ok) return;
+    const data = await res.json();
+    setPay({ balance: data.wallet?.balance || 0, incentives: data.incentives || [] });
+  };
+
   const openDetail = async (a: Agent) => {
     setDetailAgent(a);
+    setPay(null);
     const res = await fetch(`${API}/agents/${a.id}`, { headers: headers() });
     const data = await res.json();
     setDetailData({ activity: data.activity || [], leads: data.leads || [] });
+    loadPay(a.id);
+  };
+
+  const addIncentive = async () => {
+    if (!detailAgent) return;
+    const res = await fetch(`${API}/agent-portal/agents/${detailAgent.id}/incentives`, {
+      method: 'POST', headers: headers(),
+      body: JSON.stringify({ ...incentiveForm, target_value: Number(incentiveForm.target_value), rate: Number(incentiveForm.rate) }),
+    });
+    const data = await res.json();
+    if (!res.ok) { alert(data.error || 'Could not add the incentive'); return; }
+    setPay({ balance: data.wallet?.balance || 0, incentives: data.incentives || [] });
+    setIncentiveForm({ task: '', metric: 'enquiries', target_value: '5', pay_type: 'fixed', rate: '2000' });
+  };
+
+  const removeIncentive = async (id: string) => {
+    if (!detailAgent) return;
+    const res = await fetch(`${API}/agent-portal/agents/${detailAgent.id}/incentives/${id}`, { method: 'DELETE', headers: headers() });
+    const data = await res.json();
+    if (res.ok) setPay(prev => prev ? { ...prev, incentives: data.incentives || [] } : prev);
   };
 
   const submitLog = async () => {
@@ -356,6 +394,21 @@ export default function Agents() {
                 </div>
               ))}
               {isAdminOrManager && (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">Commission</label>
+                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={form.commission_type} onChange={e => setForm(f => ({ ...f, commission_type: e.target.value }))}>
+                      <option value="percent">Percent of confirmed booking</option>
+                      <option value="fixed">Fixed amount per confirmed booking</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-600 mb-1">{form.commission_type === 'fixed' ? 'Rupees per booking' : 'Percent'}</label>
+                    <input type="number" min="0" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={form.commission_rate} onChange={e => setForm(f => ({ ...f, commission_rate: e.target.value }))} />
+                  </div>
+                </>
+              )}
+              {isAdminOrManager && (
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 mb-1">Assigned To</label>
                   <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={form.assigned_to} onChange={e => setForm(f => ({ ...f, assigned_to: e.target.value }))}>
@@ -432,6 +485,40 @@ export default function Agents() {
                 </div>
               </div>
             </div>
+
+            {isAdminOrManager && (
+              <div className="px-6 pb-6">
+                <h3 className="font-semibold text-gray-800 text-sm uppercase tracking-wide mb-3">Wallet and incentives</h3>
+                <p className="text-sm text-gray-600 mb-3">
+                  Commission: {detailAgent.commission_type === 'fixed' ? `₹${Number(detailAgent.commission_rate || 0).toLocaleString('en-IN')} per confirmed booking` : `${detailAgent.commission_rate || 0}% of the confirmed booking`}.
+                  Wallet balance ₹{Math.round(pay?.balance || 0).toLocaleString('en-IN')}.
+                </p>
+                <div className="space-y-2 mb-3">
+                  {(pay?.incentives || []).map(item => (
+                    <div key={item.id} className="flex items-center justify-between gap-3 bg-amber-50 rounded-lg px-3 py-2 text-sm">
+                      <span>{item.task} · {item.actual}/{item.target_value} · {item.paid ? 'Paid' : item.pay_type === 'percent' ? `${item.rate}%` : `₹${item.rate}`}</span>
+                      <button type="button" className="text-xs text-red-600" onClick={() => removeIncentive(item.id)}>Remove</button>
+                    </div>
+                  ))}
+                  {pay && pay.incentives.length === 0 && <p className="text-sm text-gray-400">No incentive yet. Add one so this agent has a reason to send business this month.</p>}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <input className="border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Incentive name" value={incentiveForm.task} onChange={e => setIncentiveForm(f => ({ ...f, task: e.target.value }))} />
+                  <select className="border border-gray-300 rounded-lg px-3 py-2 text-sm" value={incentiveForm.metric} onChange={e => setIncentiveForm(f => ({ ...f, metric: e.target.value }))}>
+                    <option value="enquiries">Enquiries this month</option>
+                    <option value="bookings">Bookings confirmed this month</option>
+                    <option value="revenue">Revenue confirmed this month</option>
+                  </select>
+                  <input type="number" className="border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Target" value={incentiveForm.target_value} onChange={e => setIncentiveForm(f => ({ ...f, target_value: e.target.value }))} />
+                  <select className="border border-gray-300 rounded-lg px-3 py-2 text-sm" value={incentiveForm.pay_type} onChange={e => setIncentiveForm(f => ({ ...f, pay_type: e.target.value }))}>
+                    <option value="fixed">Fixed rupees</option>
+                    <option value="percent">Percent of confirmed revenue</option>
+                  </select>
+                  <input type="number" className="border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Pay" value={incentiveForm.rate} onChange={e => setIncentiveForm(f => ({ ...f, rate: e.target.value }))} />
+                  <button type="button" onClick={addIncentive} className="rounded-lg bg-amber-600 text-white text-sm font-semibold">Add incentive</button>
+                </div>
+              </div>
+            )}
 
             {/* Activity Timeline */}
             <div className="px-6 pb-6">

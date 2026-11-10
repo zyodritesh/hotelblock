@@ -26,6 +26,7 @@ const NAV_ITEMS = [
   { path: '/targets', label: 'Targets & Scores', icon: '🎯' },
   { path: '/wallet', label: 'Incentive Wallet', icon: '👛' },
   { path: '/agents', label: 'Agent Network', icon: '🌐' },
+  { path: '/agent-rewards', label: 'Agent free nights', icon: '🌙' },
   { path: '/agents/due', label: 'My Follow-ups', icon: '🔔', badge: true },
   { path: '/reports', label: 'Reports', icon: '📈' },
   { path: '/settings', label: 'Settings', icon: '⚙️' },
@@ -164,6 +165,21 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </div>
     </aside>
   );
+
+  if (user?.role === 'agent') {
+    return (
+      <div className="min-h-screen bg-stone-50">
+        <header className="bg-stone-950 text-white px-4 py-3 flex items-center justify-between sticky top-0 z-10">
+          <div>
+            <p className="font-bold tracking-tight">Aayor Agent Club</p>
+            <p className="text-xs text-stone-400">{user.name}</p>
+          </div>
+          <button type="button" onClick={handleLogout} className="text-sm text-stone-300">Sign out</button>
+        </header>
+        <main className="max-w-lg mx-auto p-4 pb-12">{children}</main>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">

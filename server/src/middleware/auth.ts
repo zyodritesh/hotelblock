@@ -16,6 +16,11 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
     const token = header.slice(7);
     const payload = jwt.verify(token, JWT_SECRET) as { id: string; email: string; role: string; name: string };
     req.user = payload;
+    const url = req.originalUrl || '';
+    const agentAllowed = url.startsWith('/api/auth') || url.startsWith('/api/agent-portal');
+    if (payload.role === 'agent' && !agentAllowed) {
+      return res.status(403).json({ error: 'Agents use their own portal' });
+    }
     next();
   } catch {
     return res.status(401).json({ error: 'Invalid token' });

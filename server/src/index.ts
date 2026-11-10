@@ -27,6 +27,7 @@ import teamCallRoutes, { sweepMissedCalls } from './routes/teamCalls';
 import phoneRoutes from './routes/phone';
 import liveRoutes from './routes/live';
 import pushRoutes from './routes/push';
+import agentPortalRoutes from './routes/agentPortal';
 import { initPush } from './push';
 
 initDb();
@@ -67,6 +68,7 @@ app.use('/api/team-calls', teamCallRoutes);
 app.use('/api/phone', phoneRoutes);
 app.use('/api/live', liveRoutes);
 app.use('/api/push', pushRoutes);
+app.use('/api/agent-portal', agentPortalRoutes);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 

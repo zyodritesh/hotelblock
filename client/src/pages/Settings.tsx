@@ -13,7 +13,9 @@ interface Hotel {
 const EMPTY_HOTEL = { name: '', address: '', city: '', phone: '', email: '', website: '', gst_number: '', brand_color: '#2563eb' };
 
 const ROLE_COLORS: Record<string, string> = { admin: 'bg-red-100 text-red-700', manager: 'bg-purple-100 text-purple-700', executive: 'bg-blue-100 text-blue-700', call_center: 'bg-teal-100 text-teal-700' };
-const ROLE_LABELS: Record<string, string> = { admin: 'Admin', manager: 'Sales manager', executive: 'Sales executive', call_center: 'Call center' };
+const ROLE_LABELS: Record<string, string> = { admin: 'Admin', manager: 'Sales manager', executive: 'Sales executive', call_center: 'Call center', agent: 'Travel agent' };
+
+interface LoyaltyTier { name: string; lifetime: number; multiplier: number; nightPrice: number; }
 
 export default function Settings() {
   const [users, setUsers] = useState<User[]>([]);
@@ -32,6 +34,7 @@ export default function Settings() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [tiers, setTiers] = useState<LoyaltyTier[]>([]);
 
   const load = async () => {
     const [u, s, h] = await Promise.all([
@@ -43,6 +46,10 @@ export default function Settings() {
     setSettings(s);
     setHotels(h);
     setSettingsForm({ hotel_name: s.hotel_name || '', hotel_tagline: s.hotel_tagline || '' });
+    try {
+      const loyalty = await api.get<{ tiers: LoyaltyTier[] }>('/agent-portal/loyalty');
+      setTiers(loyalty.tiers || []);
+    } catch { /* the rest of settings still loads */ }
   };
   useEffect(() => { load(); }, []);
 
@@ -147,6 +154,32 @@ export default function Settings() {
           <div><label className="label">Tagline</label><input className="input max-w-sm" value={settingsForm.hotel_tagline} onChange={e => setSettingsForm(f => ({ ...f, hotel_tagline: e.target.value }))} /></div>
           <button type="submit" className="btn-primary" disabled={loading}>Save Branding</button>
         </form>
+      </div>
+
+      <div className="card">
+        <h2 className="font-semibold text-gray-800 mb-1">Agent loyalty</h2>
+        <p className="text-xs text-gray-500 mb-4">Lifetime wallet earnings decide the tier. A higher tier multiplies commission and incentives, and lowers the free-night price. The first tier starts at ₹0.</p>
+        <div className="space-y-3">
+          {tiers.map((tier, index) => (
+            <div key={index} className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <input className="input" value={tier.name} onChange={e => setTiers(list => list.map((row, i) => i === index ? { ...row, name: e.target.value } : row))} placeholder="Tier name" />
+              <input className="input" type="number" value={tier.lifetime} disabled={index === 0} onChange={e => setTiers(list => list.map((row, i) => i === index ? { ...row, lifetime: Number(e.target.value) } : row))} placeholder="Lifetime ₹" />
+              <input className="input" type="number" step="0.05" value={tier.multiplier} onChange={e => setTiers(list => list.map((row, i) => i === index ? { ...row, multiplier: Number(e.target.value) } : row))} placeholder="Multiplier" />
+              <input className="input" type="number" value={tier.nightPrice} onChange={e => setTiers(list => list.map((row, i) => i === index ? { ...row, nightPrice: Number(e.target.value) } : row))} placeholder="Free night ₹" />
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2 mt-4">
+          <button type="button" className="btn-ghost" onClick={() => setTiers(list => [...list, { name: 'New tier', lifetime: (list[list.length - 1]?.lifetime || 0) + 100000, multiplier: 2, nightPrice: 4000 }])}>Add tier</button>
+          <button type="button" className="btn-primary" disabled={loading} onClick={async () => {
+            setLoading(true); setError('');
+            try {
+              const saved = await api.put<{ tiers: LoyaltyTier[] }>('/agent-portal/loyalty', { tiers });
+              setTiers(saved.tiers);
+              setSuccess('Loyalty saved. Agents see the new rates on their next visit.');
+            } catch (err: any) { setError(err.message); } finally { setLoading(false); }
+          }}>Save loyalty</button>
+        </div>
       </div>
 
       <ProposalTemplates />

@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './store/auth';
 import Layout from './components/Layout';
 import Login from './pages/Login';
@@ -21,10 +21,16 @@ import Settings from './pages/Settings';
 import Agents from './pages/Agents';
 import AgentDue from './pages/AgentDue';
 import Wallet from './pages/Wallet';
+import AgentPortal from './pages/AgentPortal';
+import AgentRewards from './pages/AgentRewards';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  const { token } = useAuthStore();
+  const { token, user } = useAuthStore();
+  const location = useLocation();
   if (!token) return <Navigate to="/login" replace />;
+  const onAgentPortal = location.pathname === '/agent';
+  if (user?.role === 'agent' && !onAgentPortal) return <Navigate to="/agent" replace />;
+  if (user?.role !== 'agent' && onAgentPortal) return <Navigate to="/" replace />;
   return <Layout>{children}</Layout>;
 }
 
@@ -57,6 +63,8 @@ export default function App() {
         <Route path="/wallet" element={<RequireAuth><Wallet /></RequireAuth>} />
         <Route path="/reports" element={<RequireAuth><Reports /></RequireAuth>} />
         <Route path="/settings" element={<RequireAuth><RequireAdmin><Settings /></RequireAdmin></RequireAuth>} />
+        <Route path="/agent" element={<RequireAuth><AgentPortal /></RequireAuth>} />
+        <Route path="/agent-rewards" element={<RequireAuth><AgentRewards /></RequireAuth>} />
         <Route path="/agents" element={<RequireAuth><Agents /></RequireAuth>} />
         <Route path="/agents/due" element={<RequireAuth><AgentDue /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />

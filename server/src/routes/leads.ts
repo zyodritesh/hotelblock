@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import db from '../db';
 import { authenticate, ownScope, AuthRequest } from '../middleware/auth';
 import { notifyUsers } from '../notify';
+import { awardCommission, settleIncentives } from '../agentClub';
 
 const router = Router();
 router.use(authenticate);
@@ -212,6 +213,12 @@ router.put('/:id', (req: AuthRequest, res: Response) => {
     room_nights ?? lead.room_nights, pax ?? lead.pax, notes ?? lead.notes, now, req.params.id,
   );
   const added = resolvedOwners ? saveOwners(lead.id, resolvedOwners.ids, resolvedOwners.primary, req.user!.id) : [];
+  const nextStage = stage ?? lead.stage;
+  if (lead.agent_id && lead.stage !== 'Closed Won' && nextStage === 'Closed Won') {
+    const revenue = Number(estimated_revenue ?? lead.estimated_revenue) || 0;
+    awardCommission(lead.agent_id, lead.id, revenue);
+    settleIncentives(lead.agent_id);
+  }
   const saved = leadById(lead.id);
   if (added.length) tellOwners(added, req.user!, saved);
   return res.json(saved);

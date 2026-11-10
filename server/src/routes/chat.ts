@@ -28,7 +28,7 @@ const upload = multer({
 const typingAt = new Map<string, Map<string, number>>();
 
 function person(id: string) {
-  return db.prepare('SELECT id, name, role FROM users WHERE id=? AND active=1').get(id) as { id: string; name: string; role: string } | undefined;
+  return db.prepare("SELECT id, name, role FROM users WHERE id=? AND active=1 AND role != 'agent'").get(id) as { id: string; name: string; role: string } | undefined;
 }
 
 function membersOf(conversationId: string) {
@@ -141,7 +141,7 @@ router.get('/threads', (req: AuthRequest, res: Response) => {
   const rows = db.prepare(`SELECT c.* FROM conversations c JOIN conversation_members m ON m.conversation_id=c.id AND m.user_id=?`).all(me) as any[];
   const threads = rows.map(row => ({ ...presentConversation(row, me), path: `/chat/c/${row.id}` }));
   const directUserIds = new Set(threads.filter(t => !t.is_group).flatMap(t => t.members.map(m => m.id)));
-  const people = db.prepare('SELECT id, name, role FROM users WHERE active=1 AND id!=? ORDER BY name').all(me) as { id: string; name: string; role: string }[];
+  const people = db.prepare("SELECT id, name, role FROM users WHERE active=1 AND role != 'agent' AND id!=? ORDER BY name").all(me) as { id: string; name: string; role: string }[];
   for (const personRow of people) {
     if (directUserIds.has(personRow.id)) continue;
     threads.push({
@@ -170,7 +170,7 @@ router.get('/with/:userId', (req: AuthRequest, res: Response) => {
   if (!other || other.id === me) return res.status(404).json({ error: 'Person not found' });
   const convo = ensureDirect(me, other.id);
   markRead(convo.id, me);
-  return res.json({ conversation: presentConversation(convo, me), messages: messagesFor(convo.id), people: db.prepare('SELECT id, name, role FROM users WHERE active=1 AND id!=? ORDER BY name').all(me), unread: unreadFor(me) });
+  return res.json({ conversation: presentConversation(convo, me), messages: messagesFor(convo.id), people: db.prepare("SELECT id, name, role FROM users WHERE active=1 AND role != 'agent' AND id!=? ORDER BY name").all(me), unread: unreadFor(me) });
 });
 
 router.get('/conversations/:id', (req: AuthRequest, res: Response) => {
@@ -178,7 +178,7 @@ router.get('/conversations/:id', (req: AuthRequest, res: Response) => {
   const convo = loadConversation(req.params.id);
   if (!convo || !isMember(convo.id, me)) return res.status(404).json({ error: 'Chat not found' });
   markRead(convo.id, me);
-  return res.json({ conversation: presentConversation(convo, me), messages: messagesFor(convo.id), people: db.prepare('SELECT id, name, role FROM users WHERE active=1 AND id!=? ORDER BY name').all(me), unread: unreadFor(me) });
+  return res.json({ conversation: presentConversation(convo, me), messages: messagesFor(convo.id), people: db.prepare("SELECT id, name, role FROM users WHERE active=1 AND role != 'agent' AND id!=? ORDER BY name").all(me), unread: unreadFor(me) });
 });
 
 router.post('/groups', (req: AuthRequest, res: Response) => {
