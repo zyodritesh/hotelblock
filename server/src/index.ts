@@ -77,8 +77,37 @@ app.get('/.well-known/assetlinks.json', (_req, res) => {
   res.type('application/json');
   res.sendFile(path.join(androidDir, 'assetlinks.json'));
 });
+function sendDownload(res: express.Response, file: string, name: string, type: string) {
+  res.setHeader('Content-Type', type);
+  res.setHeader('Content-Disposition', `attachment; filename=${name}`);
+  res.setHeader('Cache-Control', 'no-store');
+  res.sendFile(file);
+}
+
 app.get('/hotelblock.apk', (_req, res) => {
-  res.download(path.join(androidDir, 'app-release-signed.apk'), 'HotelBlock.apk');
+  sendDownload(res, path.join(androidDir, 'app-release-signed.apk'), 'hotelblock.apk', 'application/octet-stream');
+});
+app.get('/HotelBlock.zip', (_req, res) => {
+  sendDownload(res, path.join(androidDir, 'HotelBlock.zip'), 'HotelBlock.zip', 'application/zip');
+});
+app.get('/get-app', (_req, res) => {
+  res.type('html').send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Download HotelBlock</title>
+</head>
+<body style="margin:0;font-family:sans-serif;background:#0f172a;color:#fff">
+  <main style="max-width:420px;margin:0 auto;padding:28px 20px">
+    <h1 style="font-size:28px;margin:0 0 8px">HotelBlock</h1>
+    <p style="color:#cbd5e1;line-height:1.5">Android app. Agar APK download na ho, neeche wali ZIP use karo. ZIP kholo, andar hotelblock.apk pe tap karke install karo.</p>
+    <a href="/HotelBlock.zip" style="display:block;margin:18px 0;background:#2563eb;color:#fff;text-align:center;text-decoration:none;font-weight:700;padding:16px;border-radius:14px">Download ZIP</a>
+    <a href="/hotelblock.apk" style="display:block;margin:0 0 18px;background:#1e293b;color:#fff;text-align:center;text-decoration:none;font-weight:700;padding:16px;border-radius:14px">Download APK</a>
+    <p style="color:#94a3b8;font-size:14px;line-height:1.5">Install ke time Chrome ko permission do. App kholo, sign in karo, aur notifications par Allow dabao.</p>
+  </main>
+</body>
+</html>`);
 });
 
 // Serve built React client
