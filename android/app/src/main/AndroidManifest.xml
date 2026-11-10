@@ -23,6 +23,7 @@
     package="com.aayor.hotelblock">
 
     
+        <uses-permission android:name="android.permission.INTERNET"/>
         <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     
 
@@ -39,7 +40,7 @@
         android:label="@string/appName"
         
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Translucent.NoTitleBar">
+        android:theme="@style/Theme.HotelBlock">
 
         <meta-data
             android:name="asset_statements"

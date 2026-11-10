@@ -20,12 +20,12 @@
     "path": "./hotelblock.keystore",
     "alias": "hotelblock"
   },
-  "appVersionName": "1.0.0",
-  "appVersionCode": 1,
+  "appVersionName": "1.0.1",
+  "appVersionCode": 2,
   "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
   "webManifestUrl": "https://billy-univ-ultimately-tourism.trycloudflare.com/manifest.webmanifest",
-  "fallbackType": "customtabs",
+  "fallbackType": "webview",
   "features": {},
   "alphaDependencies": {
     "enabled": false
@@ -40,5 +40,5 @@
   "additionalTrustedOrigins": [],
   "retainedBundles": [],
   "displayOverride": [],
-  "appVersion": "1.0.0"
+  "appVersion": "1.0.1"
 }
