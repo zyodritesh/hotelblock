@@ -21,6 +21,7 @@ import agentsRoutes from './routes/agents';
 import catalogRoutes from './routes/catalog';
 import incentivesRoutes from './routes/incentives';
 import notificationsRoutes from './routes/notifications';
+import salesPlansRoutes from './routes/salesPlans';
 
 initDb();
 
@@ -52,6 +53,7 @@ app.use('/api/agents', agentsRoutes);
 app.use('/api/catalog', catalogRoutes);
 app.use('/api/incentives', incentivesRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/sales-plans', salesPlansRoutes);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 

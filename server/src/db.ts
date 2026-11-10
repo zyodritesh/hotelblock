@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { seedIncentives } from './seedIncentives';
+import { seedSalesTeam } from './salesTeam';
 
 const DB_PATH = path.join(__dirname, '../../data/hotelblock.db');
 
@@ -333,6 +334,28 @@ export function initDb() {
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
 
+    CREATE TABLE IF NOT EXISTS sales_plans (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      month TEXT NOT NULL,
+      focus TEXT NOT NULL,
+      title TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      daily_agent_talks INTEGER NOT NULL DEFAULT 0,
+      lead_rate REAL NOT NULL DEFAULT 0,
+      monthly_agent_meetings INTEGER NOT NULL DEFAULT 0,
+      monthly_agent_visits INTEGER NOT NULL DEFAULT 0,
+      monthly_whatsapp_groups INTEGER NOT NULL DEFAULT 0,
+      monthly_wedding_closes INTEGER NOT NULL DEFAULT 0,
+      monthly_corporate_closes INTEGER NOT NULL DEFAULT 0,
+      monthly_revenue REAL NOT NULL DEFAULT 0,
+      daily_event_talks INTEGER NOT NULL DEFAULT 0,
+      daily_incoming_calls INTEGER NOT NULL DEFAULT 0,
+      daily_revenue REAL NOT NULL DEFAULT 0,
+      UNIQUE(user_id, month),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
     CREATE TABLE IF NOT EXISTS score_targets (
       id TEXT PRIMARY KEY,
       scope TEXT NOT NULL DEFAULT 'individual',
@@ -465,6 +488,7 @@ export function initDb() {
 
   seedProposalCatalog(db);
   seedIncentives(db);
+  seedSalesTeam(db);
 }
 
 const DEFAULT_TERMS = `1. Validity

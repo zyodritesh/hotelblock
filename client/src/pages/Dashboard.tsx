@@ -4,6 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { api } from '../api/client';
 import { formatCurrency, formatDateTime, formatDate, SEGMENT_COLORS, STAGE_COLORS } from '../lib/utils';
 import KpiCard from '../components/KpiCard';
+import SalesPlanBoard from '../components/SalesPlanBoard';
 import { useAuthStore } from '../store/auth';
 
 const COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f97316'];
@@ -47,6 +48,8 @@ export default function Dashboard() {
           <Link to="/attendance" className="btn-primary text-sm px-3 py-2">🕐 Attendance</Link>
         </div>
       </div>
+
+      <SalesPlanBoard month={new Date().toISOString().slice(0, 7)} />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">

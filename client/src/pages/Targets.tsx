@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import Modal from '../components/Modal';
 import { currentMonth, formatCurrency, gradeColor, SEGMENTS, cn } from '../lib/utils';
+import SalesPlanBoard from '../components/SalesPlanBoard';
 import { useAuthStore } from '../store/auth';
 
 interface Target { id: string; user_id: string; user_name: string; month: string; segment: string; calls_target: number; meetings_target: number; revenue_target: number; }
@@ -22,6 +23,7 @@ export default function Targets() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [planIds, setPlanIds] = useState<string[]>([]);
 
   const canManage = isAdmin() || isManager();
 
@@ -35,6 +37,11 @@ export default function Targets() {
   };
 
   useEffect(() => { load(); if (canManage) api.get<any[]>('/users').then(setUsers); }, [month]);
+  useEffect(() => {
+    api.get<{ people: { id: string }[] }>(`/sales-plans?month=${month}`)
+      .then(r => setPlanIds((r.people || []).map(p => p.id)))
+      .catch(() => setPlanIds([]));
+  }, [month]);
 
   const saveTarget = async (e: React.FormEvent) => {
     e.preventDefault(); setError(''); setLoading(true);
@@ -65,7 +72,7 @@ export default function Targets() {
 
   const scoreByUser = scores.reduce((acc: any, s) => { acc[s.user_id] = s; return acc; }, {});
 
-  const displayUsers = canManage ? users : [user].filter(Boolean);
+  const displayUsers = (canManage ? users : [user].filter(Boolean)).filter((u: any) => !planIds.includes(u.id));
 
   return (
     <div className="space-y-6">
@@ -79,6 +86,8 @@ export default function Targets() {
           {canManage && <button className="btn-primary" onClick={() => { setTargetForm({ user_id: users[0]?.id || '', segment: 'All', calls_target: 0, meetings_target: 0, revenue_target: 0 }); setShowTargetModal(true); }}>+ Set Target</button>}
         </div>
       </div>
+
+      <SalesPlanBoard month={month} />
 
       {error && <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm">{error}</div>}
       {success && <div className="bg-green-50 border border-green-200 text-green-700 rounded-lg px-4 py-3 text-sm">{success}</div>}
