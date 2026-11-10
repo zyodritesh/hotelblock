@@ -113,6 +113,27 @@ router.get('/', (req: AuthRequest, res: Response) => {
   return res.json({ data: rows.map(present), total });
 });
 
+router.get('/calendar', (req: AuthRequest, res: Response) => {
+  const month = String(req.query.month || new Date().toISOString().slice(0, 7));
+  if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: 'month must be YYYY-MM' });
+  const [y, m] = month.split('-').map(Number);
+  const start = `${month}-01`;
+  const end = `${month}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`;
+  let base = `${LIST_FROM} WHERE l.event_date IS NOT NULL AND l.event_date != '' AND substr(l.event_date,1,10) BETWEEN ? AND ?`;
+  const params: any[] = [start, end];
+  if (ownScope(req.user!.role)) {
+    base += ' AND (l.user_id = ? OR l.created_by = ? OR EXISTS (SELECT 1 FROM lead_owners lo WHERE lo.lead_id = l.id AND lo.user_id = ?))';
+    params.push(req.user!.id, req.user!.id, req.user!.id);
+  }
+  const propertyId = String(req.query.property_id || '');
+  const segment = String(req.query.segment || '');
+  if (propertyId) { base += ' AND l.property_id = ?'; params.push(propertyId); }
+  if (segment) { base += ' AND l.segment = ?'; params.push(segment); }
+  if (req.query.include_lost !== '1') base += " AND l.stage != 'Closed Lost'";
+  const rows = db.prepare(`${LIST_SELECT} ${base} ORDER BY substr(l.event_date,1,10), l.title`).all(...params);
+  return res.json({ month, items: rows.map(present) });
+});
+
 router.get('/:id', (req: AuthRequest, res: Response) => {
   const lead = db.prepare('SELECT * FROM leads WHERE id=?').get(req.params.id) as any;
   if (!lead) return res.status(404).json({ error: 'Not found' });

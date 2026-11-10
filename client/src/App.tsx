@@ -8,6 +8,7 @@ import Attendance from './pages/Attendance';
 import Calls from './pages/Calls';
 import Meetings from './pages/Meetings';
 import Pipeline from './pages/Pipeline';
+import Calendar from './pages/Calendar';
 import Accounts from './pages/Accounts';
 import Contacts from './pages/Contacts';
 import Proposals from './pages/Proposals';
@@ -41,6 +42,7 @@ export default function App() {
         <Route path="/calls" element={<RequireAuth><Calls /></RequireAuth>} />
         <Route path="/meetings" element={<RequireAuth><Meetings /></RequireAuth>} />
         <Route path="/pipeline" element={<RequireAuth><Pipeline /></RequireAuth>} />
+        <Route path="/calendar" element={<RequireAuth><Calendar /></RequireAuth>} />
         <Route path="/accounts" element={<RequireAuth><Accounts /></RequireAuth>} />
         <Route path="/contacts" element={<RequireAuth><Contacts /></RequireAuth>} />
         <Route path="/proposals" element={<RequireAuth><Proposals /></RequireAuth>} />

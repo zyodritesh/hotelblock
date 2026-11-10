@@ -7,7 +7,7 @@ const BOTTOM_NAV = [
   { path: '/calls', icon: '📞', label: 'Calls' },
   { path: '/pipeline', icon: '🔄', label: 'Pipeline' },
   { path: '/agents/due', icon: '🔔', label: 'Follow-ups' },
-  { path: '/tasks', icon: '✅', label: 'Tasks' },
+  { path: '/calendar', icon: '📅', label: 'Calendar' },
 ];
 
 export default function MobileBottomNav({ overdueCount }: { overdueCount?: number }) {
