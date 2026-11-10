@@ -410,6 +410,23 @@ export function initDb() {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       FOREIGN KEY (incentive_id) REFERENCES incentives(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS person_incentives (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      month TEXT NOT NULL,
+      task TEXT NOT NULL,
+      metric TEXT NOT NULL,
+      target_value REAL NOT NULL DEFAULT 0,
+      pay_type TEXT NOT NULL,
+      rate REAL NOT NULL,
+      created_by TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_person_incentives_user_month ON person_incentives(user_id, month);
+    CREATE INDEX IF NOT EXISTS idx_sales_plans_month ON sales_plans(month);
   `);
 
   // Run migrations for existing DBs (add new columns if missing)
@@ -440,6 +457,7 @@ export function initDb() {
     "ALTER TABLE proposals ADD COLUMN terms TEXT DEFAULT ''",
     "ALTER TABLE meetings ADD COLUMN follow_up_date TEXT",
     "ALTER TABLE leads ADD COLUMN created_by TEXT",
+    "ALTER TABLE incentives ADD COLUMN person_incentive_id TEXT",
   ];
 
   for (const sql of migrations) {
@@ -489,6 +507,8 @@ export function initDb() {
   seedProposalCatalog(db);
   seedIncentives(db);
   seedSalesTeam(db);
+  ensureHotels(db);
+  spreadExistingRecordsAcrossHotels(db);
 }
 
 const DEFAULT_TERMS = `1. Validity
@@ -510,6 +530,68 @@ Rates cover only the line items listed. Extra guests, extended hours, additional
 
 5. Confirmation
 Dates and venues are held only after written acceptance of this proposal and receipt of the advance.`;
+
+function ensureHotels(database: typeof db) {
+  const already = database.prepare(`SELECT value FROM settings WHERE key='hotels_bootstrapped'`).get() as { value: string } | undefined;
+  if (already) return;
+  const { v4: uuidv4 } = require('uuid');
+  const insert = database.prepare(`INSERT INTO properties (id,name,address,city,phone,email,website,gst_number,brand_color)
+    VALUES (?,?,?,?,?,?,?,?,?)`);
+  const count = (database.prepare('SELECT COUNT(*) as c FROM properties').get() as { c: number }).c;
+  if (count === 0) {
+    insert.run(uuidv4(), 'Aayor Grand Hotel', 'MG Road, Connaught Place', 'New Delhi', '+91-11-4567-8900', 'reservations@aayorgrand.com', 'www.aayor.com', '07AAYOR0001A1Z5', '#2563eb');
+  }
+  database.prepare(`UPDATE properties SET gst_number='07AAYOR0001A1Z5', website='www.aayor.com'
+    WHERE name='Aayor Grand Hotel' AND (gst_number IS NULL OR gst_number='')`).run();
+  const named = (database.prepare('SELECT COUNT(*) as c FROM properties').get() as { c: number }).c;
+  if (named < 3) {
+    const extras: [string, string, string, string, string, string, string, string][] = [
+      ['Aayor Palace', 'Civil Lines, C-Scheme', 'Jaipur', '+91-141-400-2200', 'jaipur@aayor.com', 'www.aayor.com', '08AAYOR0002A1Z3', '#9a3412'],
+      ['Aayor Beach Resort', 'Candolim Beach Road', 'Goa', '+91-832-671-4400', 'goa@aayor.com', 'www.aayor.com', '30AAYOR0003A1Z8', '#0f766e'],
+    ];
+    for (const row of extras) {
+      if ((database.prepare('SELECT COUNT(*) as c FROM properties').get() as { c: number }).c >= 3) break;
+      if (!database.prepare('SELECT id FROM properties WHERE name=?').get(row[0])) insert.run(uuidv4(), ...row);
+    }
+  }
+  const hotels = database.prepare('SELECT id FROM properties WHERE active=1 ORDER BY name').all() as { id: string }[];
+  if (hotels.length) {
+    const leads = database.prepare(`SELECT id FROM leads WHERE property_id IS NULL OR property_id=''`).all() as { id: string }[];
+    const setLead = database.prepare('UPDATE leads SET property_id=? WHERE id=?');
+    leads.forEach((lead, i) => setLead.run(hotels[i % hotels.length].id, lead.id));
+    const calls = database.prepare(`SELECT id FROM calls WHERE property_id IS NULL OR property_id=''`).all() as { id: string }[];
+    const setCall = database.prepare('UPDATE calls SET property_id=? WHERE id=?');
+    calls.forEach((call, i) => setCall.run(hotels[i % hotels.length].id, call.id));
+    database.prepare(`UPDATE proposals SET property_id = (
+      SELECT l.property_id FROM leads l WHERE l.id = proposals.lead_id
+    ) WHERE (property_id IS NULL OR property_id='') AND lead_id IS NOT NULL AND lead_id != ''`).run();
+    database.prepare(`UPDATE proposals SET property_id=? WHERE property_id IS NULL OR property_id=''`).run(hotels[0].id);
+  }
+  database.prepare(`INSERT INTO settings (key, value) VALUES ('hotels_bootstrapped','1')`).run();
+}
+
+function spreadExistingRecordsAcrossHotels(database: typeof db) {
+  const already = database.prepare(`SELECT value FROM settings WHERE key='hotels_spread'`).get() as { value: string } | undefined;
+  if (already) return;
+  const hotels = database.prepare('SELECT id FROM properties WHERE active=1 ORDER BY name').all() as { id: string }[];
+  if (hotels.length < 2) {
+    database.prepare(`INSERT INTO settings (key, value) VALUES ('hotels_spread','1')`).run();
+    return;
+  }
+  const leads = database.prepare('SELECT id FROM leads ORDER BY created_at, id').all() as { id: string }[];
+  const setLead = database.prepare('UPDATE leads SET property_id=? WHERE id=?');
+  leads.forEach((lead, i) => setLead.run(hotels[i % hotels.length].id, lead.id));
+  const calls = database.prepare('SELECT id FROM calls ORDER BY created_at, id').all() as { id: string }[];
+  const setCall = database.prepare('UPDATE calls SET property_id=? WHERE id=?');
+  calls.forEach((call, i) => setCall.run(hotels[i % hotels.length].id, call.id));
+  database.prepare(`UPDATE proposals SET property_id = (
+    SELECT l.property_id FROM leads l WHERE l.id = proposals.lead_id
+  ) WHERE lead_id IS NOT NULL AND lead_id != ''`).run();
+  const loose = database.prepare(`SELECT id FROM proposals WHERE lead_id IS NULL OR lead_id='' ORDER BY created_at, id`).all() as { id: string }[];
+  const setProposal = database.prepare('UPDATE proposals SET property_id=? WHERE id=?');
+  loose.forEach((row, i) => setProposal.run(hotels[i % hotels.length].id, row.id));
+  database.prepare(`INSERT INTO settings (key, value) VALUES ('hotels_spread','1')`).run();
+}
 
 function seedProposalCatalog(database: typeof db) {
   const { v4: uuidv4 } = require('uuid');

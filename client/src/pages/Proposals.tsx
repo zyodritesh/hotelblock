@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -50,7 +51,9 @@ function groupLineItems(lineItems: LineItem[], sectionOrder: string[]) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function Proposals() {
-  const { isManager, activePropertyId } = useAuthStore();
+  const { activePropertyId } = useAuthStore();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
@@ -62,6 +65,7 @@ export default function Proposals() {
   const [error, setError] = useState('');
   const [photoUploading, setPhotoUploading] = useState(false);
   const photoRef = useRef<HTMLInputElement>(null);
+  const [hotelFilter, setHotelFilter] = useState('');
   const [sections, setSections] = useState<{ id: string; name: string }[]>([]);
   const [itemTemplates, setItemTemplates] = useState<{ id: string; section_name: string; description: string; default_rate: number }[]>([]);
   const [termTemplates, setTermTemplates] = useState<{ id: string; name: string; body: string; is_default: number }[]>([]);
@@ -80,12 +84,15 @@ export default function Proposals() {
   const [items, setItems] = useState<LineItem[]>([{ ...EMPTY_ITEM }]);
 
   const load = () => {
-    const p = activePropertyId ? `?property_id=${activePropertyId}` : '';
+    const p = hotelFilter ? `?property_id=${hotelFilter}` : '';
     api.get<Proposal[]>(`/proposals${p}`).then(setProposals);
   };
 
   useEffect(() => {
     load();
+  }, [hotelFilter]);
+
+  useEffect(() => {
     api.get<any>('/leads?limit=500').then(r => setLeads(r.data ?? r));
     api.get<Property[]>('/properties').then(setProperties);
     api.get<any>('/catalog').then(data => {
@@ -93,24 +100,48 @@ export default function Proposals() {
       setItemTemplates(data.items || []);
       setTermTemplates(data.terms || []);
     }).catch(() => {});
-  }, [activePropertyId]);
+  }, []);
 
   const subtotal = items.reduce((s, i) => s + i.qty * i.rate, 0);
   const discountAmt = form.discount || 0;
   const taxAmt = ((subtotal - discountAmt) * form.tax_percent) / 100;
   const grandTotal = subtotal - discountAmt + taxAmt;
 
-  const openCreate = () => {
+  const fillFromLead = (lead: any, base = form) => {
+    const hotelId = lead?.property_id || base.property_id;
+    const hotel = properties.find(p => p.id === hotelId);
+    return {
+      ...base,
+      lead_id: lead?.id || '',
+      property_id: hotelId || '',
+      title: base.title || lead?.title || '',
+      event_date: base.event_date || (lead?.event_date ? String(lead.event_date).slice(0, 10) : ''),
+      pax: base.pax || lead?.pax || 0,
+      client_name: base.client_name || lead?.contact_name || '',
+      client_company: base.client_company || lead?.account_name || '',
+      venue: base.venue || (hotel ? [hotel.name, hotel.city].filter(Boolean).join(', ') : ''),
+    };
+  };
+
+  const openCreate = (lead?: any) => {
     setEditing(null);
-    setForm({ title: '', status: 'Draft', lead_id: '', property_id: activePropertyId || '',
+    const blank = { title: '', status: 'Draft', lead_id: '', property_id: activePropertyId || properties[0]?.id || '',
       client_name: '', client_company: '', client_phone: '', client_email: '',
       event_date: '', event_type: 'Conference', venue: '', pax: 0,
       validity_date: '', payment_terms: DEFAULT_PAYMENT, cancellation_policy: DEFAULT_CANCELLATION,
       terms: defaultTerms,
-      tax_percent: 18, discount: 0, notes: '' });
+      tax_percent: 18, discount: 0, notes: '' };
+    setForm(lead ? fillFromLead(lead, blank) : blank);
     setItems([{ ...EMPTY_ITEM, section: sectionNames[0] || 'Accommodation' }]);
     setShowModal(true);
   };
+
+  useEffect(() => {
+    const fromLead = (location.state as { fromLead?: any } | null)?.fromLead;
+    if (!fromLead || !properties.length) return;
+    openCreate(fromLead);
+    navigate('/proposals', { replace: true, state: null });
+  }, [location.state, properties]);
 
   const openEdit = (p: Proposal) => {
     setEditing(p);
@@ -187,9 +218,15 @@ export default function Proposals() {
 
   return (
     <div className="space-y-6">
-      <div className="page-header">
+      <div className="page-header flex-wrap gap-3">
         <h1 className="page-title">📄 Proposals & Quotes</h1>
-        <button className="btn-primary" onClick={openCreate}>+ Create Proposal</button>
+        <div className="flex items-center gap-2">
+          <select className="select w-48" value={hotelFilter} onChange={e => setHotelFilter(e.target.value)}>
+            <option value="">All hotels</option>
+            {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          <button className="btn-primary" onClick={() => openCreate()}>+ Create Proposal</button>
+        </div>
       </div>
 
       <div className="card overflow-x-auto">
@@ -244,16 +281,19 @@ export default function Proposals() {
             <h4 className="text-sm font-semibold text-gray-700 mb-3 border-b pb-2">Basic Information</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="md:col-span-2"><label className="label">Proposal Title *</label><input className="input" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required /></div>
-              <div><label className="label">Property</label>
-                <select className="select" value={form.property_id} onChange={e => setForm(f => ({ ...f, property_id: e.target.value }))}>
+              <div><label className="label">Linked Lead</label>
+                <select className="select" value={form.lead_id} onChange={e => {
+                  const lead = leads.find((l: any) => l.id === e.target.value);
+                  setForm(f => lead ? fillFromLead(lead, { ...f, title: f.title, client_name: f.client_name, client_company: f.client_company, venue: '' }) : { ...f, lead_id: '' });
+                }}>
                   <option value="">— None —</option>
-                  {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  {leads.map((l: any) => <option key={l.id} value={l.id}>{l.title}{l.property_name ? ` · ${l.property_name}` : ''}</option>)}
                 </select>
               </div>
-              <div><label className="label">Linked Lead</label>
-                <select className="select" value={form.lead_id} onChange={e => setForm(f => ({ ...f, lead_id: e.target.value }))}>
-                  <option value="">— None —</option>
-                  {leads.map((l: any) => <option key={l.id} value={l.id}>{l.title}</option>)}
+              <div><label className="label">Hotel on this proposal</label>
+                <select className="select" value={form.property_id} onChange={e => setForm(f => ({ ...f, property_id: e.target.value }))}>
+                  <option value="">— Choose a hotel —</option>
+                  {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
               </div>
               <div><label className="label">Status</label>
@@ -263,6 +303,25 @@ export default function Proposals() {
               </div>
               <div><label className="label">Valid Until</label><input type="date" className="input" value={form.validity_date} onChange={e => setForm(f => ({ ...f, validity_date: e.target.value }))} /></div>
             </div>
+            {(() => {
+              const hotel = properties.find(p => p.id === form.property_id);
+              if (!hotel) return null;
+              return (
+                <div className="mt-4 flex gap-3 items-center rounded-xl border border-gray-200 p-3">
+                  {hotel.logo_path ? (
+                    <img src={hotel.logo_path} alt="" className="w-14 h-14 object-contain rounded-lg bg-gray-50" />
+                  ) : (
+                    <div className="w-14 h-14 rounded-lg flex items-center justify-center text-white font-bold" style={{ background: hotel.brand_color || '#1e3a5f' }}>{hotel.name[0]}</div>
+                  )}
+                  <div className="text-sm">
+                    <p className="font-semibold text-gray-900">{hotel.name}</p>
+                    <p className="text-gray-500">{[hotel.address, hotel.city].filter(Boolean).join(', ')}</p>
+                    <p className="text-xs text-gray-400">{[hotel.phone, hotel.email, hotel.gst_number ? `GST ${hotel.gst_number}` : ''].filter(Boolean).join(' · ')}</p>
+                    <p className="text-xs text-blue-700 mt-1">The PDF header uses this logo, address and GST.</p>
+                  </div>
+                </div>
+              );
+            })()}
           </section>
 
           {/* Client */}
@@ -390,6 +449,20 @@ export default function Proposals() {
                 <button className="btn-primary text-sm" onClick={() => handleExportPdf(viewProposal)}>⬇ Download PDF</button>
               </div>
             </div>
+            {(() => {
+              const hotel = properties.find(p => p.id === viewProposal.property_id);
+              if (!hotel) return null;
+              return (
+                <div className="flex gap-3 items-center rounded-xl border border-gray-200 p-3">
+                  {hotel.logo_path ? <img src={hotel.logo_path} alt="" className="w-12 h-12 object-contain" /> : <div className="w-12 h-12 rounded-lg text-white font-bold flex items-center justify-center" style={{ background: hotel.brand_color || '#1e3a5f' }}>{hotel.name[0]}</div>}
+                  <div className="text-sm">
+                    <p className="font-semibold">{hotel.name}</p>
+                    <p className="text-gray-500">{[hotel.address, hotel.city].filter(Boolean).join(', ')}</p>
+                    <p className="text-xs text-gray-400">{[hotel.phone, hotel.email, hotel.gst_number ? `GST ${hotel.gst_number}` : ''].filter(Boolean).join(' · ')}</p>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Details grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">

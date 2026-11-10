@@ -13,21 +13,32 @@ export default function Reports() {
   const [month, setMonth] = useState(currentMonth());
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [hotelId, setHotelId] = useState('');
+  const [hotels, setHotels] = useState<{ id: string; name: string; city?: string; open_leads: number; pipeline: number; closed_count: number; closed_revenue: number; calls: number; proposals: number }[]>([]);
+  const [hotelChoices, setHotelChoices] = useState<{ id: string; name: string }[]>([]);
 
   const loadAll = async () => {
-    const [cs, rev, lb, att] = await Promise.all([
-      api.get<any>(`/reports/calls-summary${from && to ? `?from=${from}&to=${to}` : ''}`),
-      api.get<any>('/reports/revenue'),
-      api.get<any[]>('/reports/leaderboard'),
+    const q = new URLSearchParams();
+    if (from && to) { q.set('from', from); q.set('to', to); }
+    if (hotelId) q.set('property_id', hotelId);
+    const qs = q.toString();
+    const [cs, rev, lb, att, byHotel, props] = await Promise.all([
+      api.get<any>(`/reports/calls-summary${qs ? `?${qs}` : ''}`),
+      api.get<any>(`/reports/revenue${hotelId ? `?property_id=${hotelId}` : ''}`),
+      api.get<any[]>(`/reports/leaderboard${hotelId ? `?property_id=${hotelId}` : ''}`),
       api.get<any[]>(`/reports/attendance-summary?month=${month}`),
+      api.get<any[]>(`/reports/hotels${from && to ? `?from=${from}&to=${to}` : ''}`),
+      api.get<{ id: string; name: string }[]>('/properties'),
     ]);
     setCallsSummary(cs);
     setRevenue(rev);
     setLeaderboard(lb);
     setAttendanceSummary(att);
+    setHotels(byHotel);
+    setHotelChoices(props);
   };
 
-  useEffect(() => { loadAll(); }, [from, to, month]);
+  useEffect(() => { loadAll(); }, [from, to, month, hotelId]);
 
   const exportCsv = (data: any[], filename: string) => {
     if (!data.length) return;
@@ -50,7 +61,45 @@ export default function Reports() {
         <div><label className="label">From</label><input type="date" className="input w-36" value={from} onChange={e => setFrom(e.target.value)} /></div>
         <div><label className="label">To</label><input type="date" className="input w-36" value={to} onChange={e => setTo(e.target.value)} /></div>
         <div><label className="label">Month (Attendance)</label><input type="month" className="input w-36" value={month} onChange={e => setMonth(e.target.value)} /></div>
-        <button className="btn-ghost text-sm" onClick={() => { setFrom(''); setTo(''); }}>Clear</button>
+        <div><label className="label">Hotel</label>
+          <select className="select w-48" value={hotelId} onChange={e => setHotelId(e.target.value)}>
+            <option value="">All hotels</option>
+            {hotelChoices.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+          </select>
+        </div>
+        <button className="btn-ghost text-sm" onClick={() => { setFrom(''); setTo(''); setHotelId(''); }}>Clear</button>
+      </div>
+
+      <div className="card overflow-x-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold">Hotels</h3>
+          <button className="btn-ghost text-xs" onClick={() => exportCsv(hotels, 'hotels')}>Export CSV</button>
+        </div>
+        <table className="w-full text-sm">
+          <thead><tr className="text-left text-xs text-gray-500 border-b border-gray-100">
+            <th className="pb-2 font-medium">Hotel</th>
+            <th className="pb-2 font-medium">Open leads</th>
+            <th className="pb-2 font-medium">Pipeline</th>
+            <th className="pb-2 font-medium">Closed</th>
+            <th className="pb-2 font-medium">Closed revenue</th>
+            <th className="pb-2 font-medium">Calls</th>
+            <th className="pb-2 font-medium">Proposals</th>
+          </tr></thead>
+          <tbody>
+            {hotels.map(h => (
+              <tr key={h.id} className="table-row cursor-pointer" onClick={() => setHotelId(h.id)}>
+                <td className="py-3 pr-4 font-medium">{h.name}{h.city ? <span className="block text-xs text-gray-400 font-normal">{h.city}</span> : null}</td>
+                <td className="py-3 pr-4">{h.open_leads}</td>
+                <td className="py-3 pr-4">{formatCurrency(h.pipeline)}</td>
+                <td className="py-3 pr-4">{h.closed_count}</td>
+                <td className="py-3 pr-4 font-semibold text-green-600">{formatCurrency(h.closed_revenue)}</td>
+                <td className="py-3 pr-4">{h.calls}</td>
+                <td className="py-3 pr-4">{h.proposals}</td>
+              </tr>
+            ))}
+            {hotels.length === 0 && <tr><td colSpan={7} className="py-8 text-center text-gray-400">Add hotels in Settings.</td></tr>}
+          </tbody>
+        </table>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

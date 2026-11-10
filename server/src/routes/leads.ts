@@ -13,10 +13,12 @@ const LIST_FROM = `
   LEFT JOIN users creator ON l.created_by = creator.id
   LEFT JOIN accounts a ON l.account_id = a.id
   LEFT JOIN contacts c ON l.contact_id = c.id
+  LEFT JOIN properties pr ON l.property_id = pr.id
 `;
 
 const LIST_SELECT = `
   SELECT l.*, u.name as user_name, creator.name as created_by_name, a.name as account_name, c.name as contact_name,
+    pr.name as property_name, pr.city as property_city,
     (
       SELECT json_group_array(json_object('id', ou.id, 'name', ou.name, 'role', ou.role))
       FROM lead_owners lo
@@ -69,6 +71,14 @@ function leadById(id: string) {
   return present(db.prepare(`${LIST_SELECT} ${LIST_FROM} WHERE l.id=?`).get(id));
 }
 
+function resolveProperty(propertyId: unknown): { id: string } | { error: string } {
+  const id = String(propertyId || '').trim();
+  if (!id) return { error: 'Choose a hotel' };
+  const row = db.prepare('SELECT id FROM properties WHERE id=? AND active=1').get(id) as { id: string } | undefined;
+  if (!row) return { error: 'Choose a hotel' };
+  return { id: row.id };
+}
+
 function tellOwners(added: string[], actor: { id: string; name: string }, lead: { id: string; title: string; segment: string }) {
   notifyUsers(added, actor.id, {
     type: 'lead_assigned',
@@ -79,7 +89,7 @@ function tellOwners(added: string[], actor: { id: string; name: string }, lead: 
 }
 
 router.get('/', (req: AuthRequest, res: Response) => {
-  const { user_id, segment, stage, search, limit = '200', offset = '0' } = req.query as Record<string, string>;
+  const { user_id, segment, stage, search, property_id, limit = '200', offset = '0' } = req.query as Record<string, string>;
   let base = `${LIST_FROM} WHERE 1=1`;
   const params: any[] = [];
   if (ownScope(req.user!.role)) {
@@ -90,6 +100,7 @@ router.get('/', (req: AuthRequest, res: Response) => {
     base += ' AND (l.user_id = ? OR EXISTS (SELECT 1 FROM lead_owners lo WHERE lo.lead_id = l.id AND lo.user_id = ?))';
     params.push(user_id, user_id);
   }
+  if (property_id) { base += ' AND l.property_id = ?'; params.push(property_id); }
   if (segment) { base += ' AND l.segment = ?'; params.push(segment); }
   if (stage) { base += ' AND l.stage = ?'; params.push(stage); }
   if (search) {
@@ -110,16 +121,18 @@ router.get('/:id', (req: AuthRequest, res: Response) => {
 });
 
 router.post('/', (req: AuthRequest, res: Response) => {
-  const { account_id, contact_id, title, segment, stage, estimated_revenue, event_date, room_nights, pax, notes, owner_ids } = req.body;
+  const { account_id, contact_id, title, segment, stage, estimated_revenue, event_date, room_nights, pax, notes, owner_ids, property_id } = req.body;
   if (!title || !segment) return res.status(400).json({ error: 'title, segment required' });
   const resolved = resolveOwners(owner_ids, req.user!.id);
   if ('error' in resolved) return res.status(400).json({ error: resolved.error });
+  const hotel = resolveProperty(property_id);
+  if ('error' in hotel) return res.status(400).json({ error: hotel.error });
   const id = uuidv4();
   const now = new Date().toISOString();
   const tx = db.transaction(() => {
-    db.prepare(`INSERT INTO leads (id,account_id,contact_id,user_id,title,segment,stage,estimated_revenue,event_date,room_nights,pax,notes,created_by,created_at,updated_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
-      id, account_id || null, contact_id || null, resolved.primary, title, segment,
+    db.prepare(`INSERT INTO leads (id,account_id,contact_id,user_id,property_id,title,segment,stage,estimated_revenue,event_date,room_nights,pax,notes,created_by,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+      id, account_id || null, contact_id || null, resolved.primary, hotel.id, title, segment,
       stage || 'Prospect', estimated_revenue || 0, event_date || null, room_nights || 0, pax || 0, notes || '',
       req.user!.id, now, now,
     );
@@ -135,16 +148,22 @@ router.put('/:id', (req: AuthRequest, res: Response) => {
   const lead = db.prepare('SELECT * FROM leads WHERE id=?').get(req.params.id) as any;
   if (!lead) return res.status(404).json({ error: 'Not found' });
   if (!canAccess(req.user!, lead)) return res.status(403).json({ error: 'Forbidden' });
-  const { account_id, contact_id, title, segment, stage, estimated_revenue, event_date, room_nights, pax, notes, owner_ids } = req.body;
+  const { account_id, contact_id, title, segment, stage, estimated_revenue, event_date, room_nights, pax, notes, owner_ids, property_id } = req.body;
   let resolvedOwners: { ids: string[]; primary: string } | null = null;
   if (Array.isArray(owner_ids)) {
     const resolved = resolveOwners(owner_ids, lead.user_id);
     if ('error' in resolved) return res.status(400).json({ error: resolved.error });
     resolvedOwners = resolved;
   }
+  let propertyId = lead.property_id;
+  if (property_id !== undefined) {
+    const hotel = resolveProperty(property_id);
+    if ('error' in hotel) return res.status(400).json({ error: hotel.error });
+    propertyId = hotel.id;
+  }
   const now = new Date().toISOString();
-  db.prepare(`UPDATE leads SET account_id=?,contact_id=?,title=?,segment=?,stage=?,estimated_revenue=?,event_date=?,room_nights=?,pax=?,notes=?,updated_at=? WHERE id=?`).run(
-    account_id ?? lead.account_id, contact_id ?? lead.contact_id, title ?? lead.title, segment ?? lead.segment,
+  db.prepare(`UPDATE leads SET account_id=?,contact_id=?,property_id=?,title=?,segment=?,stage=?,estimated_revenue=?,event_date=?,room_nights=?,pax=?,notes=?,updated_at=? WHERE id=?`).run(
+    account_id ?? lead.account_id, contact_id ?? lead.contact_id, propertyId, title ?? lead.title, segment ?? lead.segment,
     stage ?? lead.stage, estimated_revenue ?? lead.estimated_revenue, event_date ?? lead.event_date,
     room_nights ?? lead.room_nights, pax ?? lead.pax, notes ?? lead.notes, now, req.params.id,
   );

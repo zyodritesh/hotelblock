@@ -5,6 +5,12 @@ import { authenticate, ownScope, AuthRequest } from '../middleware/auth';
 const router = Router();
 router.use(authenticate);
 
+function hotelSql(raw: string | undefined, column = 'property_id') {
+  if (!raw) return '';
+  const row = db.prepare('SELECT id FROM properties WHERE id=?').get(raw) as { id: string } | undefined;
+  return row ? ` AND ${column} = '${row.id}'` : '';
+}
+
 router.get('/dashboard', (req: AuthRequest, res: Response) => {
   const today = new Date().toISOString().slice(0, 10);
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
@@ -36,21 +42,56 @@ router.get('/dashboard', (req: AuthRequest, res: Response) => {
 });
 
 router.get('/calls-summary', (req: AuthRequest, res: Response) => {
-  const { from, to, user_id } = req.query as Record<string, string>;
+  const { from, to, user_id, property_id } = req.query as Record<string, string>;
   const userId = ownScope(req.user!.role) ? req.user!.id : (user_id || null);
   const userFilter = userId ? `AND user_id = '${userId}'` : '';
-  const dateFilter = from && to ? `AND date(created_at) BETWEEN '${from}' AND '${to}'` : '';
-  const bySegment = db.prepare(`SELECT segment, COUNT(*) as count FROM calls WHERE 1=1 ${userFilter} ${dateFilter} GROUP BY segment`).all();
-  const byOutcome = db.prepare(`SELECT outcome, COUNT(*) as count FROM calls WHERE 1=1 ${userFilter} ${dateFilter} GROUP BY outcome`).all();
-  const byDay = db.prepare(`SELECT date(created_at) as day, COUNT(*) as count FROM calls WHERE 1=1 ${userFilter} ${dateFilter} GROUP BY day ORDER BY day`).all();
+  const dateFilter = from && to && /^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to) ? `AND date(created_at) BETWEEN '${from}' AND '${to}'` : '';
+  const hotel = hotelSql(property_id);
+  const bySegment = db.prepare(`SELECT segment, COUNT(*) as count FROM calls WHERE 1=1 ${userFilter} ${dateFilter} ${hotel} GROUP BY segment`).all();
+  const byOutcome = db.prepare(`SELECT outcome, COUNT(*) as count FROM calls WHERE 1=1 ${userFilter} ${dateFilter} ${hotel} GROUP BY outcome`).all();
+  const byDay = db.prepare(`SELECT date(created_at) as day, COUNT(*) as count FROM calls WHERE 1=1 ${userFilter} ${dateFilter} ${hotel} GROUP BY day ORDER BY day`).all();
   return res.json({ bySegment, byOutcome, byDay });
 });
 
 router.get('/revenue', (req: AuthRequest, res: Response) => {
+  const propertyId = String(req.query.property_id || '');
   const userId = ownScope(req.user!.role) ? req.user!.id : null;
   const userFilter = userId ? `AND user_id = '${userId}'` : '';
-  const monthly = db.prepare(`SELECT strftime('%Y-%m', updated_at) as month, COALESCE(SUM(estimated_revenue),0) as revenue FROM leads WHERE stage='Closed Won' ${userFilter} GROUP BY month ORDER BY month DESC LIMIT 12`).all();
+  const hotel = hotelSql(propertyId);
+  const monthly = db.prepare(`SELECT strftime('%Y-%m', updated_at) as month, COALESCE(SUM(estimated_revenue),0) as revenue FROM leads WHERE stage='Closed Won' ${userFilter} ${hotel} GROUP BY month ORDER BY month DESC LIMIT 12`).all();
   return res.json({ monthly });
+});
+
+router.get('/hotels', (req: AuthRequest, res: Response) => {
+  const { from, to } = req.query as Record<string, string>;
+  const dated = from && to && /^\d{4}-\d{2}-\d{2}$/.test(from) && /^\d{4}-\d{2}-\d{2}$/.test(to);
+  const me = ownScope(req.user!.role) ? req.user!.id : null;
+  const hotels = db.prepare('SELECT id, name, city FROM properties WHERE active=1 ORDER BY name').all() as { id: string; name: string; city: string }[];
+  const rows = hotels.map(hotel => {
+    const leadScope = me
+      ? `AND (user_id=? OR created_by=? OR id IN (SELECT lead_id FROM lead_owners WHERE user_id=?))`
+      : '';
+    const leadParams = me ? [hotel.id, me, me, me] : [hotel.id];
+    const open = db.prepare(`SELECT COUNT(*) as c, COALESCE(SUM(estimated_revenue),0) as value FROM leads WHERE property_id=? AND stage NOT IN ('Closed Won','Closed Lost') ${leadScope}`).get(...leadParams) as { c: number; value: number };
+    const closedSql = `SELECT COUNT(*) as c, COALESCE(SUM(estimated_revenue),0) as value FROM leads WHERE property_id=? AND stage='Closed Won' ${me ? 'AND user_id=?' : ''} ${dated ? 'AND date(updated_at) BETWEEN ? AND ?' : ''}`;
+    const closedParams = [hotel.id, ...(me ? [me] : []), ...(dated ? [from, to] : [])];
+    const closed = db.prepare(closedSql).get(...closedParams) as { c: number; value: number };
+    const callSql = `SELECT COUNT(*) as c FROM calls WHERE property_id=? ${me ? 'AND user_id=?' : ''} ${dated ? 'AND date(created_at) BETWEEN ? AND ?' : ''}`;
+    const calls = (db.prepare(callSql).get(...closedParams) as { c: number }).c;
+    const proposals = (db.prepare(`SELECT COUNT(*) as c FROM proposals WHERE property_id=? ${me ? 'AND user_id=?' : ''}`).get(...(me ? [hotel.id, me] : [hotel.id])) as { c: number }).c;
+    return {
+      id: hotel.id,
+      name: hotel.name,
+      city: hotel.city,
+      open_leads: open.c,
+      pipeline: open.value,
+      closed_count: closed.c,
+      closed_revenue: closed.value,
+      calls,
+      proposals,
+    };
+  });
+  return res.json(rows);
 });
 
 router.get('/leaderboard', (req: AuthRequest, res: Response) => {
@@ -62,9 +103,15 @@ router.get('/leaderboard', (req: AuthRequest, res: Response) => {
       : db.prepare('SELECT id, name, role FROM users WHERE active=1').all()) as any[];
   const leaderboard = users.map((u: any) => {
     const monthStart = `${month}-01`, monthEnd = `${month}-31`;
-    const calls = (db.prepare(`SELECT COUNT(*) as c FROM calls WHERE user_id=? AND date(created_at) BETWEEN ? AND ?`).get(u.id, monthStart, monthEnd) as any).c;
+    const hotel = String(req.query.property_id || '');
+    const hotelOk = hotel ? db.prepare('SELECT id FROM properties WHERE id=?').get(hotel) as { id: string } | undefined : undefined;
+    const calls = hotelOk
+      ? (db.prepare(`SELECT COUNT(*) as c FROM calls WHERE user_id=? AND property_id=? AND date(created_at) BETWEEN ? AND ?`).get(u.id, hotelOk.id, monthStart, monthEnd) as any).c
+      : (db.prepare(`SELECT COUNT(*) as c FROM calls WHERE user_id=? AND date(created_at) BETWEEN ? AND ?`).get(u.id, monthStart, monthEnd) as any).c;
     const meetings = (db.prepare(`SELECT COUNT(*) as c FROM meetings WHERE user_id=? AND date(meeting_date) BETWEEN ? AND ?`).get(u.id, monthStart, monthEnd) as any).c;
-    const revenue = (db.prepare(`SELECT COALESCE(SUM(estimated_revenue),0) as total FROM leads WHERE user_id=? AND stage='Closed Won' AND date(updated_at) BETWEEN ? AND ?`).get(u.id, monthStart, monthEnd) as any).total;
+    const revenue = hotelOk
+      ? (db.prepare(`SELECT COALESCE(SUM(estimated_revenue),0) as total FROM leads WHERE user_id=? AND property_id=? AND stage='Closed Won' AND date(updated_at) BETWEEN ? AND ?`).get(u.id, hotelOk.id, monthStart, monthEnd) as any).total
+      : (db.prepare(`SELECT COALESCE(SUM(estimated_revenue),0) as total FROM leads WHERE user_id=? AND stage='Closed Won' AND date(updated_at) BETWEEN ? AND ?`).get(u.id, monthStart, monthEnd) as any).total;
     const score = db.prepare(`SELECT total_score, grade FROM review_scores WHERE user_id=? AND month=?`).get(u.id, month) as any;
     return { ...u, calls, meetings, revenue, score: score?.total_score || 0, grade: score?.grade || '-' };
   });

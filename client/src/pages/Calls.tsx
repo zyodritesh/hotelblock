@@ -12,12 +12,14 @@ interface Call {
   user_id: string; user_name: string; segment: string; call_type: string;
   duration_min: number; outcome: string; notes: string; next_action: string;
   next_action_date: string | null; created_at: string;
+  property_id?: string | null; property_name?: string | null;
 }
+interface Hotel { id: string; name: string; }
 
-const EMPTY_FORM = { contact_name: '', company: '', phone: '', segment: 'Rooms', call_type: 'Cold Call', duration_min: 0, outcome: 'Interested', notes: '', next_action: '', next_action_date: '' };
+const EMPTY_FORM = { contact_name: '', company: '', phone: '', segment: 'Rooms', call_type: 'Cold Call', duration_min: 0, outcome: 'Interested', notes: '', next_action: '', next_action_date: '', property_id: '' };
 
 export default function Calls() {
-  const { isManager } = useAuthStore();
+  const { isManager, activePropertyId } = useAuthStore();
   const [calls, setCalls] = useState<Call[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -27,8 +29,9 @@ export default function Calls() {
   const [showModal, setShowModal] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [filters, setFilters] = useState({ segment: '', outcome: '', from: '', to: '', user_id: '' });
+  const [filters, setFilters] = useState({ segment: '', outcome: '', from: '', to: '', user_id: '', property_id: '' });
   const [users, setUsers] = useState<any[]>([]);
+  const [hotels, setHotels] = useState<Hotel[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -41,6 +44,7 @@ export default function Calls() {
       if (filters.from) q.append('from', filters.from);
       if (filters.to) q.append('to', filters.to);
       if (filters.user_id) q.append('user_id', filters.user_id);
+      if (filters.property_id) q.append('property_id', filters.property_id);
       if (search) q.append('search', search);
       q.append('limit', String(ps));
       q.append('offset', String((p - 1) * ps));
@@ -54,12 +58,13 @@ export default function Calls() {
   useEffect(() => { loadCalls(page, pageSize); }, [page, pageSize, filters, search]);
   useEffect(() => {
     if (isManager()) api.get<any[]>('/users').then(setUsers);
+    api.get<Hotel[]>('/properties').then(setHotels).catch(() => {});
   }, []);
 
-  const openCreate = () => { setEditing(null); setForm({ ...EMPTY_FORM }); setShowModal(true); };
+  const openCreate = () => { setEditing(null); setForm({ ...EMPTY_FORM, property_id: activePropertyId || '' }); setShowModal(true); };
   const openEdit = (call: Call) => {
     setEditing(call);
-    setForm({ contact_name: call.contact_name, company: call.company, phone: call.phone, segment: call.segment, call_type: call.call_type, duration_min: call.duration_min, outcome: call.outcome, notes: call.notes, next_action: call.next_action, next_action_date: call.next_action_date || '' });
+    setForm({ contact_name: call.contact_name, company: call.company, phone: call.phone, segment: call.segment, call_type: call.call_type, duration_min: call.duration_min, outcome: call.outcome, notes: call.notes, next_action: call.next_action, next_action_date: call.next_action_date || '', property_id: call.property_id || '' });
     setShowModal(true);
   };
 
@@ -84,6 +89,7 @@ export default function Calls() {
     if (filters.from) q.append('from', filters.from);
     if (filters.to) q.append('to', filters.to);
     if (filters.user_id) q.append('user_id', filters.user_id);
+    if (filters.property_id) q.append('property_id', filters.property_id);
     if (search) q.append('search', search);
     q.append('limit', '5000'); q.append('offset', '0');
     const res = await api.get<any>(`/calls?${q}`);
@@ -129,6 +135,10 @@ export default function Calls() {
           </select>
           <input type="date" className="input flex-shrink-0 w-32 text-xs py-1.5" value={filters.from} onChange={e => setFilters(f => ({ ...f, from: e.target.value }))} />
           <input type="date" className="input flex-shrink-0 w-32 text-xs py-1.5" value={filters.to} onChange={e => setFilters(f => ({ ...f, to: e.target.value }))} />
+          <select className="select flex-shrink-0 text-xs w-40 py-1.5" value={filters.property_id} onChange={e => setFilters(f => ({ ...f, property_id: e.target.value }))}>
+            <option value="">All hotels</option>
+            {hotels.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+          </select>
           {isManager() && (
             <select className="select flex-shrink-0 text-xs w-36 py-1.5" value={filters.user_id} onChange={e => setFilters(f => ({ ...f, user_id: e.target.value }))}>
               <option value="">All Staff</option>
@@ -136,7 +146,7 @@ export default function Calls() {
             </select>
           )}
           {(search || Object.values(filters).some(v => v)) && (
-            <button className="btn-ghost text-xs flex-shrink-0 px-3 py-1.5" onClick={() => { setSearch(''); setFilters({ segment: '', outcome: '', from: '', to: '', user_id: '' }); }}>✕ Clear</button>
+            <button className="btn-ghost text-xs flex-shrink-0 px-3 py-1.5" onClick={() => { setSearch(''); setFilters({ segment: '', outcome: '', from: '', to: '', user_id: '', property_id: '' }); }}>✕ Clear</button>
           )}
           <button onClick={handleExport} className="btn-ghost text-xs flex-shrink-0 px-3 py-1.5 sm:hidden">⬇ Export</button>
         </div>
@@ -229,6 +239,12 @@ export default function Calls() {
       <Modal open={showModal} onClose={() => setShowModal(false)} title={editing ? 'Edit Call' : 'Log New Call'} size="lg">
         {error && <div className="bg-red-50 text-red-700 rounded-lg px-4 py-3 mb-4 text-sm">{error}</div>}
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="md:col-span-2"><label className="label">Hotel</label>
+            <select className="select" value={form.property_id} onChange={e => setForm(f => ({ ...f, property_id: e.target.value }))}>
+              <option value="">— No hotel —</option>
+              {hotels.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+            </select>
+          </div>
           <div><label className="label">Contact Name</label><input className="input" value={form.contact_name} onChange={e => setForm(f => ({ ...f, contact_name: e.target.value }))} /></div>
           <div><label className="label">Company</label><input className="input" value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))} /></div>
           <div><label className="label">Phone</label><input className="input" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} /></div>

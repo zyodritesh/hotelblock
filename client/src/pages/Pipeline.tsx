@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -14,11 +14,13 @@ interface Lead {
   user_id: string; user_name: string; account_id?: string | null; contact_id?: string | null;
   account_name: string; contact_name: string;
   created_by?: string | null; created_by_name?: string | null;
+  property_id?: string | null; property_name?: string | null; property_city?: string | null;
   owners?: Person[];
   created_at: string; updated_at: string;
 }
+interface Hotel { id: string; name: string; city: string; }
 
-const EMPTY_FORM = { title: '', segment: 'Rooms', stage: 'Prospect', estimated_revenue: 0, event_date: '', room_nights: 0, pax: 0, notes: '', account_id: '', contact_id: '', owner_ids: [] as string[] };
+const EMPTY_FORM = { title: '', segment: 'Rooms', stage: 'Prospect', estimated_revenue: 0, event_date: '', room_nights: 0, pax: 0, notes: '', account_id: '', contact_id: '', property_id: '', owner_ids: [] as string[] };
 
 function ownerNames(lead: Lead) {
   if (lead.owners?.length) return lead.owners.map(o => o.id === lead.user_id ? `${o.name} (primary)` : o.name).join(', ');
@@ -62,7 +64,8 @@ function OwnerPicker({ people, value, onChange }: { people: Person[]; value: str
 }
 
 export default function Pipeline() {
-  const { user } = useAuthStore();
+  const { user, activePropertyId } = useAuthStore();
+  const navigate = useNavigate();
   const location = useLocation();
   const openedLead = useRef<string | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -75,7 +78,8 @@ export default function Pipeline() {
   const [showModal, setShowModal] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'kanban' | 'table'>('kanban');
-  const [filters, setFilters] = useState({ segment: '', stage: '', user_id: '' });
+  const [filters, setFilters] = useState({ segment: '', stage: '', user_id: '', property_id: '' });
+  const [hotels, setHotels] = useState<Hotel[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [contacts, setContacts] = useState<any[]>([]);
@@ -90,6 +94,7 @@ export default function Pipeline() {
       if (filters.segment) q.append('segment', filters.segment);
       if (filters.stage) q.append('stage', filters.stage);
       if (filters.user_id) q.append('user_id', filters.user_id);
+      if (filters.property_id) q.append('property_id', filters.property_id);
       if (search) q.append('search', search);
       q.append('limit', String(viewMode === 'kanban' ? 500 : ps));
       q.append('offset', String(viewMode === 'kanban' ? 0 : (p - 1) * ps));
@@ -105,11 +110,12 @@ export default function Pipeline() {
     api.get<any>('/accounts?limit=500').then(r => setAccounts(r.data ?? r));
     api.get<any>('/contacts?limit=500').then(r => setContacts(r.data ?? r));
     api.get<Person[]>('/users/directory').then(setPeople).catch(() => {});
+    api.get<Hotel[]>('/properties').then(setHotels).catch(() => {});
   }, []);
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ ...EMPTY_FORM, owner_ids: user?.id ? [user.id] : [] });
+    setForm({ ...EMPTY_FORM, owner_ids: user?.id ? [user.id] : [], property_id: activePropertyId || hotels[0]?.id || '' });
     setShowModal(true);
   };
   const openEdit = (lead: Lead) => {
@@ -121,7 +127,7 @@ export default function Pipeline() {
     setForm({
       title: lead.title, segment: lead.segment, stage: lead.stage, estimated_revenue: lead.estimated_revenue,
       event_date: lead.event_date || '', room_nights: lead.room_nights, pax: lead.pax, notes: lead.notes || '',
-      account_id: lead.account_id || '', contact_id: lead.contact_id || '', owner_ids: ordered,
+      account_id: lead.account_id || '', contact_id: lead.contact_id || '', property_id: lead.property_id || '', owner_ids: ordered,
     });
     setShowModal(true);
   };
@@ -138,6 +144,7 @@ export default function Pipeline() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault(); setError('');
     if (!form.owner_ids.length) { setError('Choose at least one lead owner'); return; }
+    if (!form.property_id) { setError('Choose a hotel'); return; }
     setLoading(true);
     try {
       if (editing) await api.put(`/leads/${editing.id}`, form);
@@ -151,6 +158,7 @@ export default function Pipeline() {
     if (filters.segment) q.append('segment', filters.segment);
     if (filters.stage) q.append('stage', filters.stage);
     if (filters.user_id) q.append('user_id', filters.user_id);
+    if (filters.property_id) q.append('property_id', filters.property_id);
     if (search) q.append('search', search);
     q.append('limit', '5000'); q.append('offset', '0');
     const res = await api.get<any>(`/leads?${q}`);
@@ -160,7 +168,7 @@ export default function Pipeline() {
       { key: 'stage', label: 'Stage' }, { key: 'estimated_revenue', label: 'Revenue (₹)' },
       { key: 'event_date', label: 'Event Date' }, { key: 'pax', label: 'Pax' },
       { key: 'room_nights', label: 'Room Nights' }, { key: 'account_name', label: 'Account' },
-      { key: 'contact_name', label: 'Contact' }, { key: 'user_name', label: 'Primary owner' },
+      { key: 'contact_name', label: 'Contact' }, { key: 'property_name', label: 'Hotel' }, { key: 'user_name', label: 'Primary owner' },
       { key: 'owner_names', label: 'Owners' }, { key: 'created_by_name', label: 'Added by' },
       { key: 'notes', label: 'Notes' }, { key: 'updated_at', label: 'Updated' },
     ]);
@@ -209,8 +217,12 @@ export default function Pipeline() {
           <option value="">All owners</option>
           {people.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
         </select>
+        <select className="select flex-shrink-0 text-xs w-44 py-1.5" value={filters.property_id} onChange={e => setFilters(f => ({ ...f, property_id: e.target.value }))}>
+          <option value="">All hotels</option>
+          {hotels.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+        </select>
         {(search || Object.values(filters).some(v => v)) && (
-          <button className="btn-ghost text-xs flex-shrink-0 px-3 py-1.5" onClick={() => { setSearch(''); setFilters({ segment: '', stage: '', user_id: '' }); }}>✕ Clear</button>
+          <button className="btn-ghost text-xs flex-shrink-0 px-3 py-1.5" onClick={() => { setSearch(''); setFilters({ segment: '', stage: '', user_id: '', property_id: '' }); }}>✕ Clear</button>
         )}
         <button onClick={handleExport} className="btn-ghost text-xs flex-shrink-0 px-3 py-1.5 sm:hidden">⬇ Export</button>
       </div>
@@ -229,6 +241,7 @@ export default function Pipeline() {
                   <span className={`badge text-xs ${SEGMENT_COLORS[lead.segment]}`}>{lead.segment}</span>
                   <span className={`badge text-xs ${STAGE_COLORS[lead.stage]}`}>{lead.stage}</span>
                 </div>
+                <p className="text-xs text-blue-700 mt-1">{lead.property_name || 'No hotel'}</p>
                 <p className="text-xs text-gray-500 mt-2">{ownerNames(lead)}</p>
                 {lead.created_by_name && lead.created_by && !(lead.owners || []).some(o => o.id === lead.created_by) && (
                   <p className="text-xs text-gray-400">Added by {lead.created_by_name}</p>
@@ -282,6 +295,7 @@ export default function Pipeline() {
                         <p className="text-sm font-medium text-gray-900 leading-tight">{lead.title}</p>
                         <span className={`badge text-xs flex-shrink-0 ${SEGMENT_COLORS[lead.segment]}`}>{lead.segment.slice(0, 3)}</span>
                       </div>
+                      <p className="text-xs text-blue-700">{lead.property_name || 'No hotel'}</p>
                       <p className="text-xs text-gray-500">{lead.account_name || ownerNames(lead)}</p>
                       <p className="text-xs text-gray-400 mt-1">{ownerNames(lead)}</p>
                       {lead.created_by_name && lead.created_by && !(lead.owners || []).some(o => o.id === lead.created_by) && (
@@ -306,6 +320,7 @@ export default function Pipeline() {
           <table className="w-full text-sm">
             <thead><tr className="text-left text-xs text-gray-500 border-b border-gray-100">
               <th className="pb-2 font-medium">Lead</th>
+              <th className="pb-2 font-medium">Hotel</th>
               <th className="pb-2 font-medium">Segment</th>
               <th className="pb-2 font-medium">Stage</th>
               <th className="pb-2 font-medium">Revenue</th>
@@ -317,6 +332,7 @@ export default function Pipeline() {
               {leads.map(lead => (
                 <tr key={lead.id} className="table-row">
                   <td className="py-3 pr-4"><p className="font-medium">{lead.title}</p><p className="text-xs text-gray-400">{lead.account_name}</p></td>
+                  <td className="py-3 pr-4 text-xs text-gray-600">{lead.property_name || '—'}</td>
                   <td className="py-3 pr-4"><span className={`badge ${SEGMENT_COLORS[lead.segment]}`}>{lead.segment}</span></td>
                   <td className="py-3 pr-4">
                     <select className="select text-xs py-1 px-2 w-36" value={lead.stage} onChange={e => moveStage(lead.id, e.target.value)}>
@@ -334,7 +350,7 @@ export default function Pipeline() {
                   </td>
                 </tr>
               ))}
-              {leads.length === 0 && !loading && <tr><td colSpan={7} className="py-12 text-center text-gray-400">No leads found.</td></tr>}
+              {leads.length === 0 && !loading && <tr><td colSpan={8} className="py-12 text-center text-gray-400">No leads found.</td></tr>}
             </tbody>
           </table>
           <Pagination page={page} pageSize={pageSize} total={total} onPage={setPage} onPageSize={ps => { setPageSize(ps); setPage(1); }} />
@@ -345,6 +361,13 @@ export default function Pipeline() {
         {error && <div className="bg-red-50 text-red-700 rounded-lg px-4 py-3 mb-4 text-sm">{error}</div>}
         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="md:col-span-2"><label className="label">Lead Title *</label><input className="input" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required placeholder="e.g. Sharma Wedding - 200 pax" /></div>
+          <div className="md:col-span-2"><label className="label">Hotel *</label>
+            <select className="select" required value={form.property_id} onChange={e => setForm(f => ({ ...f, property_id: e.target.value }))}>
+              <option value="">Choose a hotel</option>
+              {hotels.map(h => <option key={h.id} value={h.id}>{h.name}{h.city ? ` · ${h.city}` : ''}</option>)}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">A lead can be for any hotel. The proposal uses that hotel’s logo, address and GST.</p>
+          </div>
           <div className="md:col-span-2">
             <OwnerPicker people={people} value={form.owner_ids} onChange={owner_ids => setForm(f => ({ ...f, owner_ids }))} />
           </div>
@@ -375,9 +398,14 @@ export default function Pipeline() {
             </select>
           </div>
           <div className="md:col-span-2"><label className="label">Notes</label><textarea className="input" rows={3} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} /></div>
-          <div className="md:col-span-2 flex justify-end gap-3 pt-2">
-            <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
-            <button type="submit" className="btn-primary" disabled={loading}>{loading ? 'Saving…' : editing ? 'Update' : 'Add Lead'}</button>
+          <div className="md:col-span-2 flex items-center gap-3 pt-2">
+            {editing && (
+              <button type="button" className="btn-secondary" onClick={() => navigate('/proposals', { state: { fromLead: editing } })}>Create proposal</button>
+            )}
+            <div className="ml-auto flex gap-3">
+              <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
+              <button type="submit" className="btn-primary" disabled={loading}>{loading ? 'Saving…' : editing ? 'Update' : 'Add Lead'}</button>
+            </div>
           </div>
         </form>
       </Modal>

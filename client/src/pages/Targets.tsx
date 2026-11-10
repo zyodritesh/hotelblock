@@ -38,8 +38,8 @@ export default function Targets() {
 
   useEffect(() => { load(); if (canManage) api.get<any[]>('/users').then(setUsers); }, [month]);
   useEffect(() => {
-    api.get<{ people: { id: string }[] }>(`/sales-plans?month=${month}`)
-      .then(r => setPlanIds((r.people || []).map(p => p.id)))
+    api.get<{ planUserIds?: string[]; people: { id: string }[] }>(`/sales-plans?month=${month}&limit=1`)
+      .then(r => setPlanIds(r.planUserIds || (r.people || []).map(p => p.id)))
       .catch(() => setPlanIds([]));
   }, [month]);
 

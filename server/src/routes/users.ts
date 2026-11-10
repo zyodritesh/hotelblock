@@ -7,9 +7,17 @@ import { authenticate, requireAdmin, ownScope, AuthRequest } from '../middleware
 const router = Router();
 router.use(authenticate);
 
-router.get('/directory', (_req: AuthRequest, res: Response) => {
-  const people = db.prepare('SELECT id, name, role FROM users WHERE active=1 ORDER BY name').all();
-  return res.json(people);
+router.get('/directory', (req: AuthRequest, res: Response) => {
+  const q = String(req.query.q || '').trim();
+  const limitRaw = req.query.limit;
+  if (!q && limitRaw == null) {
+    return res.json(db.prepare('SELECT id, name, role FROM users WHERE active=1 ORDER BY name').all());
+  }
+  const limit = Math.min(50, Math.max(1, Number(limitRaw) || 20));
+  if (!q) {
+    return res.json(db.prepare('SELECT id, name, role FROM users WHERE active=1 ORDER BY name LIMIT ?').all(limit));
+  }
+  return res.json(db.prepare('SELECT id, name, role FROM users WHERE active=1 AND name LIKE ? ORDER BY name LIMIT ?').all(`%${q}%`, limit));
 });
 
 router.get('/', (req: AuthRequest, res: Response) => {

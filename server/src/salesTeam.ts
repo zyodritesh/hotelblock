@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { actualsFor } from './incentiveMetrics';
+import { incentivesForUsers } from './taskIncentives';
 import { todayISO } from './dates';
 
 type PlanRow = {
@@ -66,21 +67,14 @@ function ensureUser(db: any, name: string, email: string, password: string) {
 }
 
 function upsertPlan(db: any, userId: string, month: string, plan: Record<string, string | number>) {
+  const existing = db.prepare('SELECT id FROM sales_plans WHERE user_id=? AND month=?').get(userId, month);
+  if (existing) return;
   db.prepare(`INSERT INTO sales_plans (
     id, user_id, month, focus, title, summary,
     daily_agent_talks, lead_rate, monthly_agent_meetings, monthly_agent_visits, monthly_whatsapp_groups,
     monthly_wedding_closes, monthly_corporate_closes, monthly_revenue,
     daily_event_talks, daily_incoming_calls, daily_revenue
-  ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-  ON CONFLICT(user_id, month) DO UPDATE SET
-    focus=excluded.focus, title=excluded.title, summary=excluded.summary,
-    daily_agent_talks=excluded.daily_agent_talks, lead_rate=excluded.lead_rate,
-    monthly_agent_meetings=excluded.monthly_agent_meetings, monthly_agent_visits=excluded.monthly_agent_visits,
-    monthly_whatsapp_groups=excluded.monthly_whatsapp_groups,
-    monthly_wedding_closes=excluded.monthly_wedding_closes, monthly_corporate_closes=excluded.monthly_corporate_closes,
-    monthly_revenue=excluded.monthly_revenue, daily_event_talks=excluded.daily_event_talks,
-    daily_incoming_calls=excluded.daily_incoming_calls, daily_revenue=excluded.daily_revenue
-  `).run(
+  ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
     uuidv4(), userId, month, plan.focus, plan.title, plan.summary,
     plan.daily_agent_talks, plan.lead_rate, plan.monthly_agent_meetings, plan.monthly_agent_visits, plan.monthly_whatsapp_groups,
     plan.monthly_wedding_closes, plan.monthly_corporate_closes, plan.monthly_revenue,
@@ -88,10 +82,10 @@ function upsertPlan(db: any, userId: string, month: string, plan: Record<string,
   );
 }
 
-function upsertClassicTarget(db: any, userId: string, month: string, calls: number, meetings: number, revenue: number, createdBy: string | null) {
+function upsertClassicTarget(db: any, userId: string, month: string, calls: number, meetings: number, revenue: number, createdBy: string | null, overwrite = false) {
   const existing = db.prepare("SELECT id FROM targets WHERE user_id=? AND month=? AND segment='All'").get(userId, month) as { id: string } | undefined;
   if (existing) {
-    db.prepare('UPDATE targets SET calls_target=?, meetings_target=?, revenue_target=? WHERE id=?').run(calls, meetings, revenue, existing.id);
+    if (overwrite) db.prepare('UPDATE targets SET calls_target=?, meetings_target=?, revenue_target=? WHERE id=?').run(calls, meetings, revenue, existing.id);
     return;
   }
   db.prepare('INSERT INTO targets (id,user_id,month,segment,calls_target,meetings_target,revenue_target,created_by) VALUES (?,?,?,?,?,?,?,?)').run(
@@ -99,10 +93,10 @@ function upsertClassicTarget(db: any, userId: string, month: string, calls: numb
   );
 }
 
-function upsertScore(db: any, userId: string, month: string, metric: string, value: number, weight: number, createdBy: string | null) {
+function upsertScore(db: any, userId: string, month: string, metric: string, value: number, weight: number, createdBy: string | null, overwrite = false) {
   const existing = db.prepare("SELECT id FROM score_targets WHERE scope='individual' AND user_id=? AND month=? AND metric=?").get(userId, month, metric) as { id: string } | undefined;
   if (existing) {
-    db.prepare('UPDATE score_targets SET target_value=?, weight=? WHERE id=?').run(value, weight, existing.id);
+    if (overwrite) db.prepare('UPDATE score_targets SET target_value=?, weight=? WHERE id=?').run(value, weight, existing.id);
     return;
   }
   db.prepare('INSERT INTO score_targets (id,scope,user_id,month,metric,target_value,weight,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?)').run(
@@ -179,7 +173,7 @@ function countCalls(db: any, userId: string, from: string, to: string, extraSql 
   return (db.prepare(`SELECT COUNT(*) as c FROM calls WHERE user_id=? AND substr(created_at,1,10) BETWEEN ? AND ? ${extraSql}`).get(userId, from, to, ...extra) as { c: number }).c;
 }
 
-export function salesPlanReport(db: any, month: string, onlyUserId?: string) {
+export function salesPlanReport(db: any, month: string, onlyUserId?: string, opts?: { q?: string; page?: number; limit?: number }) {
   if (!/^\d{4}-\d{2}$/.test(month)) return null;
   const today = todayISO();
   const days = workingDays(month);
@@ -188,15 +182,26 @@ export function salesPlanReport(db: any, month: string, onlyUserId?: string) {
   const elapsed = today.slice(0, 7) === month ? workingDaysThrough(month, today) : today > last ? days : 0;
   const start = `${month}-01`;
   const end = `${month}-31`;
+  const q = String(opts?.q || '').trim();
+  const limit = Math.min(50, Math.max(1, Number(opts?.limit) || 20));
+  const page = Math.max(1, Number(opts?.page) || 1);
   const params: any[] = [month];
   let where = 'WHERE p.month=?';
   if (onlyUserId) { where += ' AND p.user_id=?'; params.push(onlyUserId); }
+  else if (q) { where += ' AND (u.name LIKE ? OR u.email LIKE ?)'; params.push(`%${q}%`, `%${q}%`); }
+  const total = (db.prepare(`SELECT COUNT(*) as c FROM sales_plans p JOIN users u ON u.id=p.user_id ${where}`).get(...params) as { c: number }).c;
+  const planUserIds = onlyUserId
+    ? (total ? [onlyUserId] : [])
+    : (db.prepare('SELECT user_id FROM sales_plans WHERE month=?').all(month) as { user_id: string }[]).map(r => r.user_id);
+  const offset = onlyUserId ? 0 : (page - 1) * limit;
+  const pageLimit = onlyUserId ? 5 : limit;
   const plans = db.prepare(`
     SELECT p.*, u.name, u.email, u.role
     FROM sales_plans p JOIN users u ON u.id=p.user_id
     ${where}
     ORDER BY CASE p.focus WHEN 'closer' THEN 1 WHEN 'agents' THEN 2 ELSE 3 END, u.name
-  `).all(...params) as PlanRow[];
+    LIMIT ? OFFSET ?
+  `).all(...params, pageLimit, offset) as PlanRow[];
 
   const people = plans.map(plan => {
     const closures = actualsFor(db, [plan.user_id], month);
@@ -226,28 +231,27 @@ export function salesPlanReport(db: any, month: string, onlyUserId?: string) {
       lines.push({ label: 'Converted', actual: Number(owned?.won_count || 0), target: 0, period: 'month' });
       lines.push({ label: 'Still open', actual: Number(owned?.open_count || 0), target: 0, period: 'month' });
       lines.push({ label: 'Event revenue this month', actual: Number(closures.event_revenue || 0), target: 0, money: true, period: 'month' });
-    } else {
-      const talksToday = countActivity(db, plan.user_id, 'Call', today, today);
-      const talksMonth = countActivity(db, plan.user_id, 'Call', start, end);
-      const leadsMonth = (db.prepare(`SELECT COUNT(*) as c FROM leads WHERE created_by=? AND substr(created_at,1,7)=?`).get(plan.user_id, month) as { c: number }).c;
-      pushDaily('Agent conversations', talksToday, plan.daily_agent_talks);
-      const talkTarget = plan.daily_agent_talks * days;
-      pushMonth('Agent conversations', talksMonth, talkTarget);
-      if (plan.lead_rate > 0 && talkTarget > 0) {
-        lines.push({ label: `Leads from agents (${Math.round(plan.lead_rate * 100)}%)`, actual: leadsMonth, target: Math.round(talkTarget * plan.lead_rate), period: 'month' });
-      }
-      pushMonth('Agent meetings', countActivity(db, plan.user_id, 'Meeting', start, end), plan.monthly_agent_meetings);
-      pushMonth('Agent visits', countActivity(db, plan.user_id, 'Site Visit', start, end), plan.monthly_agent_visits);
-      pushMonth('WhatsApp groups', countActivity(db, plan.user_id, 'WhatsApp', start, end), plan.monthly_whatsapp_groups);
-      pushDaily('Event conversations', countCalls(db, plan.user_id, today, today, "AND segment='Events'"), plan.daily_event_talks);
-      pushMonth('Event conversations', countCalls(db, plan.user_id, start, end, "AND segment='Events'"), plan.daily_event_talks * days);
-      pushDaily('Incoming calls', countCalls(db, plan.user_id, today, today, "AND call_type='Inbound'"), plan.daily_incoming_calls);
-      pushMonth('Incoming calls', countCalls(db, plan.user_id, start, end, "AND call_type='Inbound'"), plan.daily_incoming_calls * days);
-      pushDaily('Sales closed', revenueToday, plan.daily_revenue);
-      pushMonth('Weddings closed', Number(closures.wedding_closures || 0), plan.monthly_wedding_closes);
-      pushMonth('Corporate closures', Number(closures.corporate_closures || 0), plan.monthly_corporate_closes);
-      if (plan.monthly_revenue > 0) lines.push({ label: 'Revenue closed', actual: revenue, target: plan.monthly_revenue, money: true, period: 'month' });
     }
+    const talksToday = countActivity(db, plan.user_id, 'Call', today, today);
+    const talksMonth = countActivity(db, plan.user_id, 'Call', start, end);
+    const leadsMonth = (db.prepare(`SELECT COUNT(*) as c FROM leads WHERE created_by=? AND substr(created_at,1,7)=?`).get(plan.user_id, month) as { c: number }).c;
+    pushDaily('Agent conversations', talksToday, plan.daily_agent_talks);
+    const talkTarget = plan.daily_agent_talks * days;
+    pushMonth('Agent conversations', talksMonth, talkTarget);
+    if (plan.lead_rate > 0 && talkTarget > 0) {
+      lines.push({ label: `Leads from agents (${Math.round(plan.lead_rate * 100)}%)`, actual: leadsMonth, target: Math.round(talkTarget * plan.lead_rate), period: 'month' });
+    }
+    pushMonth('Agent meetings', countActivity(db, plan.user_id, 'Meeting', start, end), plan.monthly_agent_meetings);
+    pushMonth('Agent visits', countActivity(db, plan.user_id, 'Site Visit', start, end), plan.monthly_agent_visits);
+    pushMonth('WhatsApp groups', countActivity(db, plan.user_id, 'WhatsApp', start, end), plan.monthly_whatsapp_groups);
+    pushDaily('Event conversations', countCalls(db, plan.user_id, today, today, "AND segment='Events'"), plan.daily_event_talks);
+    pushMonth('Event conversations', countCalls(db, plan.user_id, start, end, "AND segment='Events'"), plan.daily_event_talks * days);
+    pushDaily('Incoming calls', countCalls(db, plan.user_id, today, today, "AND call_type='Inbound'"), plan.daily_incoming_calls);
+    pushMonth('Incoming calls', countCalls(db, plan.user_id, start, end, "AND call_type='Inbound'"), plan.daily_incoming_calls * days);
+    pushDaily('Sales closed', revenueToday, plan.daily_revenue);
+    pushMonth('Weddings closed', Number(closures.wedding_closures || 0), plan.monthly_wedding_closes);
+    pushMonth('Corporate closures', Number(closures.corporate_closures || 0), plan.monthly_corporate_closes);
+    if (plan.monthly_revenue > 0) lines.push({ label: 'Revenue closed', actual: revenue, target: plan.monthly_revenue, money: true, period: 'month' });
 
     return {
       id: plan.user_id,
@@ -256,9 +260,24 @@ export function salesPlanReport(db: any, month: string, onlyUserId?: string) {
       title: plan.title,
       focus: plan.focus,
       summary: plan.summary,
+      targets: {
+        daily_agent_talks: plan.daily_agent_talks,
+        lead_percent: Math.round(plan.lead_rate * 100),
+        monthly_agent_meetings: plan.monthly_agent_meetings,
+        monthly_agent_visits: plan.monthly_agent_visits,
+        monthly_whatsapp_groups: plan.monthly_whatsapp_groups,
+        monthly_wedding_closes: plan.monthly_wedding_closes,
+        monthly_corporate_closes: plan.monthly_corporate_closes,
+        monthly_revenue: plan.monthly_revenue,
+        daily_event_talks: plan.daily_event_talks,
+        daily_incoming_calls: plan.daily_incoming_calls,
+        daily_revenue: plan.daily_revenue,
+      },
       lines,
     };
   });
+
+  const incentiveMap = incentivesForUsers(db, people.map(p => p.id), month);
 
   return {
     month,
@@ -266,6 +285,116 @@ export function salesPlanReport(db: any, month: string, onlyUserId?: string) {
     workingDays: days,
     workingDaysElapsed: elapsed,
     week: 'Monday to Saturday',
-    people,
+    total,
+    page: onlyUserId ? 1 : page,
+    limit: pageLimit,
+    planUserIds,
+    people: people.map(p => ({ ...p, incentives: incentiveMap[p.id] || [] })),
   };
+}
+
+function nonNegative(value: unknown, fallback: number) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return n;
+}
+
+export function saveSalesPlan(db: any, userId: string, month: string, input: Record<string, unknown>, editorId: string) {
+  const row = db.prepare('SELECT * FROM sales_plans WHERE user_id=? AND month=?').get(userId, month) as any;
+  if (!row) return { error: 'No plan for this person in that month' };
+  const percent = Math.min(100, nonNegative(input.lead_percent, row.lead_rate * 100));
+  const next = {
+    title: String(input.title ?? row.title).trim() || row.title,
+    summary: String(input.summary ?? row.summary).trim() || row.summary,
+    daily_agent_talks: nonNegative(input.daily_agent_talks, row.daily_agent_talks),
+    lead_rate: percent / 100,
+    monthly_agent_meetings: nonNegative(input.monthly_agent_meetings, row.monthly_agent_meetings),
+    monthly_agent_visits: nonNegative(input.monthly_agent_visits, row.monthly_agent_visits),
+    monthly_whatsapp_groups: nonNegative(input.monthly_whatsapp_groups, row.monthly_whatsapp_groups),
+    monthly_wedding_closes: nonNegative(input.monthly_wedding_closes, row.monthly_wedding_closes),
+    monthly_corporate_closes: nonNegative(input.monthly_corporate_closes, row.monthly_corporate_closes),
+    monthly_revenue: nonNegative(input.monthly_revenue, row.monthly_revenue),
+    daily_event_talks: nonNegative(input.daily_event_talks, row.daily_event_talks),
+    daily_incoming_calls: nonNegative(input.daily_incoming_calls, row.daily_incoming_calls),
+    daily_revenue: nonNegative(input.daily_revenue, row.daily_revenue),
+  };
+  db.prepare(`UPDATE sales_plans SET title=?, summary=?, daily_agent_talks=?, lead_rate=?,
+    monthly_agent_meetings=?, monthly_agent_visits=?, monthly_whatsapp_groups=?,
+    monthly_wedding_closes=?, monthly_corporate_closes=?, monthly_revenue=?,
+    daily_event_talks=?, daily_incoming_calls=?, daily_revenue=?
+    WHERE user_id=? AND month=?`).run(
+    next.title, next.summary, next.daily_agent_talks, next.lead_rate,
+    next.monthly_agent_meetings, next.monthly_agent_visits, next.monthly_whatsapp_groups,
+    next.monthly_wedding_closes, next.monthly_corporate_closes, next.monthly_revenue,
+    next.daily_event_talks, next.daily_incoming_calls, next.daily_revenue,
+    userId, month,
+  );
+  const days = workingDays(month);
+  const calls = (next.daily_agent_talks + next.daily_event_talks + next.daily_incoming_calls) * days;
+  const revenue = next.monthly_revenue > 0 ? next.monthly_revenue : next.daily_revenue * days;
+  upsertClassicTarget(db, userId, month, calls, next.monthly_agent_meetings, revenue, editorId, true);
+  upsertScore(db, userId, month, 'wedding_closures', next.monthly_wedding_closes, 25, editorId, true);
+  upsertScore(db, userId, month, 'corporate_closures', next.monthly_corporate_closes, 25, editorId, true);
+  return { ok: true };
+}
+
+function planNumbers(input: Record<string, unknown>, fallback: Record<string, number>) {
+  const percent = Math.min(100, nonNegative(input.lead_percent, fallback.lead_rate * 100));
+  return {
+    daily_agent_talks: nonNegative(input.daily_agent_talks, fallback.daily_agent_talks),
+    lead_rate: percent / 100,
+    monthly_agent_meetings: nonNegative(input.monthly_agent_meetings, fallback.monthly_agent_meetings),
+    monthly_agent_visits: nonNegative(input.monthly_agent_visits, fallback.monthly_agent_visits),
+    monthly_whatsapp_groups: nonNegative(input.monthly_whatsapp_groups, fallback.monthly_whatsapp_groups),
+    monthly_wedding_closes: nonNegative(input.monthly_wedding_closes, fallback.monthly_wedding_closes),
+    monthly_corporate_closes: nonNegative(input.monthly_corporate_closes, fallback.monthly_corporate_closes),
+    monthly_revenue: nonNegative(input.monthly_revenue, fallback.monthly_revenue),
+    daily_event_talks: nonNegative(input.daily_event_talks, fallback.daily_event_talks),
+    daily_incoming_calls: nonNegative(input.daily_incoming_calls, fallback.daily_incoming_calls),
+    daily_revenue: nonNegative(input.daily_revenue, fallback.daily_revenue),
+  };
+}
+
+const ZERO_PLAN = {
+  daily_agent_talks: 0, lead_rate: 0, monthly_agent_meetings: 0, monthly_agent_visits: 0, monthly_whatsapp_groups: 0,
+  monthly_wedding_closes: 0, monthly_corporate_closes: 0, monthly_revenue: 0,
+  daily_event_talks: 0, daily_incoming_calls: 0, daily_revenue: 0,
+};
+
+export function createSalesPlan(db: any, userId: string, month: string, input: Record<string, unknown>, editorId: string) {
+  const user = db.prepare('SELECT id, active FROM users WHERE id=?').get(userId) as { id: string; active: number } | undefined;
+  if (!user || !user.active) return { error: 'Choose an active person' };
+  if (db.prepare('SELECT id FROM sales_plans WHERE user_id=? AND month=?').get(userId, month)) {
+    return { error: 'This person already has a plan for that month. Edit that plan instead.' };
+  }
+  const focus = ['closer', 'agents', 'events'].includes(String(input.focus)) ? String(input.focus) : 'agents';
+  const title = String(input.title || '').trim() || 'Sales plan';
+  const summary = String(input.summary || '').trim() || 'Targets set by admin.';
+  const next = planNumbers(input, ZERO_PLAN);
+  db.prepare(`INSERT INTO sales_plans (
+    id, user_id, month, focus, title, summary,
+    daily_agent_talks, lead_rate, monthly_agent_meetings, monthly_agent_visits, monthly_whatsapp_groups,
+    monthly_wedding_closes, monthly_corporate_closes, monthly_revenue,
+    daily_event_talks, daily_incoming_calls, daily_revenue
+  ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    uuidv4(), userId, month, focus, title, summary,
+    next.daily_agent_talks, next.lead_rate, next.monthly_agent_meetings, next.monthly_agent_visits, next.monthly_whatsapp_groups,
+    next.monthly_wedding_closes, next.monthly_corporate_closes, next.monthly_revenue,
+    next.daily_event_talks, next.daily_incoming_calls, next.daily_revenue,
+  );
+  const days = workingDays(month);
+  const calls = (next.daily_agent_talks + next.daily_event_talks + next.daily_incoming_calls) * days;
+  const revenue = next.monthly_revenue > 0 ? next.monthly_revenue : next.daily_revenue * days;
+  upsertClassicTarget(db, userId, month, calls, next.monthly_agent_meetings, revenue, editorId, true);
+  upsertScore(db, userId, month, 'wedding_closures', next.monthly_wedding_closes, 25, editorId, true);
+  upsertScore(db, userId, month, 'corporate_closures', next.monthly_corporate_closes, 25, editorId, true);
+  return { ok: true };
+}
+
+export function deleteSalesPlan(db: any, userId: string, month: string) {
+  const row = db.prepare('SELECT id FROM sales_plans WHERE user_id=? AND month=?').get(userId, month);
+  if (!row) return { error: 'No plan for this person in that month' };
+  db.prepare('DELETE FROM person_incentives WHERE user_id=? AND month=?').run(userId, month);
+  db.prepare('DELETE FROM sales_plans WHERE user_id=? AND month=?').run(userId, month);
+  return { ok: true };
 }

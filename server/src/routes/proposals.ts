@@ -63,6 +63,13 @@ router.get('/:id', (req: AuthRequest, res: Response) => {
   return res.json(p);
 });
 
+function hotelFromLead(leadId: unknown, propertyId: unknown) {
+  const chosen = String(propertyId || '').trim();
+  if (chosen) return chosen;
+  const lead = leadId ? db.prepare('SELECT property_id FROM leads WHERE id=?').get(String(leadId)) as { property_id: string | null } | undefined : undefined;
+  return lead?.property_id || null;
+}
+
 router.post('/', (req: AuthRequest, res: Response) => {
   const {
     lead_id, property_id, title, status, client_name, client_company, client_phone, client_email,
@@ -78,7 +85,7 @@ router.post('/', (req: AuthRequest, res: Response) => {
     event_date,event_type,venue,pax,validity_date,payment_terms,cancellation_policy,
     tax_percent,discount,total_value,line_items,photos,notes,terms,created_at,updated_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
-    id, lead_id||null, req.user!.id, property_id||null, title, ref_number,
+    id, lead_id||null, req.user!.id, hotelFromLead(lead_id, property_id), title, ref_number,
     status||'Draft', client_name||'', client_company||'', client_phone||'', client_email||'',
     event_date||null, event_type||'', venue||'', pax||0, validity_date||null,
     payment_terms||'', cancellation_policy||'', tax_percent??18, discount||0,
@@ -102,7 +109,7 @@ router.put('/:id', (req: AuthRequest, res: Response) => {
     event_date=?,event_type=?,venue=?,pax=?,validity_date=?,payment_terms=?,cancellation_policy=?,
     tax_percent=?,discount=?,total_value=?,line_items=?,notes=?,terms=?,updated_at=?
     WHERE id=?`).run(
-    lead_id??p.lead_id, property_id??p.property_id, title??p.title, status??p.status,
+    lead_id??p.lead_id, property_id !== undefined ? hotelFromLead(lead_id ?? p.lead_id, property_id) : p.property_id, title??p.title, status??p.status,
     client_name??p.client_name, client_company??p.client_company, client_phone??p.client_phone, client_email??p.client_email,
     event_date??p.event_date, event_type??p.event_type, venue??p.venue, pax??p.pax,
     validity_date??p.validity_date, payment_terms??p.payment_terms, cancellation_policy??p.cancellation_policy,

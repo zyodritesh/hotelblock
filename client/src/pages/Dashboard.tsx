@@ -49,7 +49,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <SalesPlanBoard month={new Date().toISOString().slice(0, 7)} />
+      <SalesPlanBoard month={new Date().toISOString().slice(0, 7)} pageSize={6} />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
