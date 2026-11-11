@@ -1,6 +1,6 @@
 {
   "packageId": "com.aayor.hotelblock",
-  "host": "billy-univ-ultimately-tourism.trycloudflare.com",
+  "host": "keyword-blake-fire-cia.trycloudflare.com",
   "name": "HotelBlock",
   "launcherName": "HotelBlock",
   "display": "standalone",
@@ -13,18 +13,18 @@
   "backgroundColor": "#0F172A",
   "enableNotifications": true,
   "startUrl": "/",
-  "iconUrl": "https://billy-univ-ultimately-tourism.trycloudflare.com/icon-512.png",
-  "maskableIconUrl": "https://billy-univ-ultimately-tourism.trycloudflare.com/icon-512.png",
+  "iconUrl": "https://keyword-blake-fire-cia.trycloudflare.com/icon-512.png",
+  "maskableIconUrl": "https://keyword-blake-fire-cia.trycloudflare.com/icon-512.png",
   "splashScreenFadeOutDuration": 300,
   "signingKey": {
     "path": "./hotelblock.keystore",
     "alias": "hotelblock"
   },
-  "appVersionName": "1.0.5",
-  "appVersionCode": 6,
+  "appVersionName": "1.0.6",
+  "appVersionCode": 7,
   "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
-  "webManifestUrl": "https://billy-univ-ultimately-tourism.trycloudflare.com/manifest.webmanifest",
+  "webManifestUrl": "https://keyword-blake-fire-cia.trycloudflare.com/manifest.webmanifest",
   "fallbackType": "webview",
   "features": {},
   "alphaDependencies": {
@@ -33,12 +33,12 @@
   "enableSiteSettingsShortcut": false,
   "isChromeOSOnly": false,
   "isMetaQuest": false,
-  "fullScopeUrl": "https://billy-univ-ultimately-tourism.trycloudflare.com/",
+  "fullScopeUrl": "https://keyword-blake-fire-cia.trycloudflare.com/",
   "minSdkVersion": 24,
   "orientation": "default",
   "fingerprints": [],
   "additionalTrustedOrigins": [],
   "retainedBundles": [],
   "displayOverride": [],
-  "appVersion": "1.0.5"
+  "appVersion": "1.0.6"
 }
