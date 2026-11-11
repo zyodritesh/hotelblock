@@ -195,6 +195,7 @@ router.post('/:id/end', (req: AuthRequest, res: Response) => {
   closeCall(call, status, Number.isFinite(rawDuration) ? rawDuration : undefined);
   const other = req.user!.id === call.from_user_id ? call.to_user_id : call.from_user_id;
   publish(other, 'call', { action: status, callId: call.id });
+  publish(req.user!.id, 'call', { action: status, callId: call.id });
   return res.json({ ok: true });
 });
 

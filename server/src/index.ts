@@ -112,8 +112,13 @@ app.get('/get-app', (_req, res) => {
 
 // Serve built React client
 const clientDist = path.join(__dirname, '../../client/dist');
-app.use(express.static(clientDist));
+app.use(express.static(clientDist, {
+  setHeaders(res, filePath) {
+    if (filePath.endsWith('index.html') || filePath.endsWith('sw.js')) res.setHeader('Cache-Control', 'no-cache');
+  },
+}));
 app.get('*', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(path.join(clientDist, 'index.html'));
 });
 

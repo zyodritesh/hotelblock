@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSyncExternalStore } from 'react';
 import { getSnapshot, subscribe } from '../live/store';
-import { acceptIncoming, bindRemoteAudio, declineIncoming, hangUp } from '../live/session';
+import { acceptIncoming, bindRemoteAudio, declineIncoming, hangUp, toggleMute } from '../live/session';
 
 function useLive() {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
@@ -18,6 +18,7 @@ export default function CallOverlay() {
       if (!audio) return;
       audio.srcObject = stream;
       if (stream) audio.play().catch(() => {});
+      else audio.pause();
     });
   }, []);
 
@@ -61,15 +62,32 @@ export default function CallOverlay() {
           </div>
           <h2 className="mt-4 text-2xl font-semibold text-center">{live.peerName || 'Teammate'}</h2>
           <p className="mt-1 text-slate-400">{live.phase === 'live' ? clock : live.phase === 'connecting' ? 'Connecting audio' : 'Ringing'}</p>
-          <div className="mt-10 flex gap-4">
+          <div className="mt-10 flex items-end justify-center gap-8">
             {live.phase === 'incoming' && (
               <>
-                <button type="button" className="w-16 h-16 rounded-full bg-red-600 text-2xl" onClick={() => declineIncoming()}>✕</button>
-                <button type="button" className="w-16 h-16 rounded-full bg-green-500 text-2xl" onClick={() => acceptIncoming()}>☎</button>
+                <button type="button" className="flex flex-col items-center gap-2" onClick={() => declineIncoming()}>
+                  <span className="w-16 h-16 rounded-full bg-red-600 flex items-center justify-center text-sm font-semibold">No</span>
+                  <span className="text-xs text-slate-300">Decline</span>
+                </button>
+                <button type="button" className="flex flex-col items-center gap-2" onClick={() => acceptIncoming()}>
+                  <span className="w-16 h-16 rounded-full bg-green-500 flex items-center justify-center text-sm font-semibold">Yes</span>
+                  <span className="text-xs text-slate-300">Accept</span>
+                </button>
               </>
             )}
             {live.phase !== 'incoming' && (
-              <button type="button" className="px-6 py-3 rounded-full bg-red-600 font-semibold" onClick={() => hangUp()}>End call</button>
+              <>
+                <button type="button" className="flex flex-col items-center gap-2" onClick={() => toggleMute()}>
+                  <span className={`w-16 h-16 rounded-full flex items-center justify-center text-sm font-semibold ${live.muted ? 'bg-white text-slate-900' : 'bg-slate-700 text-white'}`}>
+                    {live.muted ? 'Off' : 'Mic'}
+                  </span>
+                  <span className="text-xs text-slate-300">{live.muted ? 'Unmute' : 'Mute'}</span>
+                </button>
+                <button type="button" className="flex flex-col items-center gap-2" onClick={() => hangUp()}>
+                  <span className="w-16 h-16 rounded-full bg-red-600 flex items-center justify-center text-sm font-semibold">End</span>
+                  <span className="text-xs text-slate-300">Disconnect</span>
+                </button>
+              </>
             )}
           </div>
         </div>

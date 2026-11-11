@@ -25,6 +25,9 @@ let localIce: RTCIceCandidateInit[] = [];
 let remoteHook: ((stream: MediaStream | null) => void) | null = null;
 let group = false;
 let watchTimer = 0;
+let epoch = 0;
+let hangingUp = false;
+let dropTimer = 0;
 const appliedIce = new Set<string>();
 const seenSignalIds = new Set<string>();
 const seenGroupKeys = new Set<string>();
@@ -49,11 +52,19 @@ function stopWatch() {
 }
 
 function resetMedia() {
+  epoch += 1;
+  hangingUp = true;
   stopWatch();
-  local?.getTracks().forEach(track => track.stop());
+  if (dropTimer) window.clearTimeout(dropTimer);
+  dropTimer = 0;
+  local?.getTracks().forEach(track => {
+    track.enabled = false;
+    track.stop();
+  });
   local = null;
-  pc?.close();
+  const closing = pc;
   pc = null;
+  closing?.close();
   remoteHook?.(null);
   for (const link of peers.values()) {
     link.pc.close();
@@ -90,6 +101,7 @@ function idle(error = '') {
     peerId: '',
     callId: '',
     connectedAt: 0,
+    muted: false,
     error,
     ...(error ? { toast: { title: 'Call', body: error } } : {}),
   });
@@ -103,11 +115,24 @@ function markLive() {
 }
 
 function noteConnection(connection: RTCPeerConnection, endOnFail: boolean) {
+  if (hangingUp) return;
   const ice = connection.iceConnectionState;
   const state = connection.connectionState;
-  if (ice === 'connected' || ice === 'completed' || state === 'connected') markLive();
-  if (endOnFail && (ice === 'failed' || state === 'failed') && getSnapshot().phase !== 'idle') {
+  if (ice === 'connected' || ice === 'completed' || state === 'connected') {
+    if (dropTimer) window.clearTimeout(dropTimer);
+    dropTimer = 0;
+    markLive();
+    return;
+  }
+  if (endOnFail && (ice === 'failed' || state === 'failed' || ice === 'closed' || state === 'closed') && getSnapshot().phase !== 'idle') {
     idle('The call could not connect. Try again.');
+    return;
+  }
+  if (endOnFail && (ice === 'disconnected' || state === 'disconnected') && getSnapshot().phase === 'live' && !dropTimer) {
+    dropTimer = window.setTimeout(() => {
+      dropTimer = 0;
+      if (!hangingUp && getSnapshot().phase === 'live') idle('');
+    }, 4000);
   }
 }
 
@@ -176,17 +201,36 @@ async function pullSignals() {
   }
 }
 
+function applyMute() {
+  const off = getSnapshot().muted;
+  local?.getAudioTracks().forEach(track => { track.enabled = !off; });
+}
+
+export function toggleMute() {
+  const phase = getSnapshot().phase;
+  if (phase === 'idle' || phase === 'incoming') return;
+  patch({ muted: !getSnapshot().muted });
+  applyMute();
+}
+
 async function tickCall() {
-  if (!callId || getSnapshot().phase === 'idle') return;
+  const id = callId;
+  const gen = epoch;
+  if (!id || getSnapshot().phase === 'idle') return;
   try {
-    if (!group && !answerApplied && getSnapshot().phase === 'outgoing') {
-      const row = await api.get<{ status: string; answer_sdp?: string | null }>(`/team-calls/${callId}`);
-      if (['declined', 'ended', 'missed', 'cancelled'].includes(row.status)) {
-        idle(row.status === 'declined' ? 'Call declined' : row.status === 'missed' ? 'No answer' : '');
-        return;
-      }
-      if (row.status === 'accepted' && row.answer_sdp) await takeAnswer(row.answer_sdp);
+    const row = await api.get<{ status: string; answer_sdp?: string | null }>(`/team-calls/${id}`);
+    if (gen !== epoch || callId !== id || getSnapshot().phase === 'idle') return;
+    if (['declined', 'ended', 'missed', 'cancelled'].includes(row.status)) {
+      const endedByOther = row.status === 'ended' || row.status === 'cancelled';
+      const error = row.status === 'declined' ? 'Call declined' : row.status === 'missed' ? 'No answer' : '';
+      const duration = talkSeconds();
+      resetMedia();
+      patch({ phase: 'idle', peerName: '', peerId: '', callId: '', connectedAt: 0, muted: false, error, ...(error ? { toast: { title: 'Call', body: error } } : {}) });
+      if (endedByOther) api.post(`/team-calls/${id}/end`, { duration_sec: duration }).catch(() => {});
+      return;
     }
+    if (!group && !answerApplied && row.status === 'accepted' && row.answer_sdp) await takeAnswer(row.answer_sdp);
+    if (gen !== epoch || !callId) return;
     if (group || remoteReady || getSnapshot().phase === 'connecting' || getSnapshot().phase === 'live') await pullSignals();
   } catch { /* the next tick retries */ }
 }
@@ -200,10 +244,12 @@ function startWatch() {
 export async function startOutgoing(peer: { id: string; name: string }) {
   if (getSnapshot().phase !== 'idle') return;
   group = false;
-  patch({ phase: 'outgoing', peerName: peer.name, peerId: peer.id, error: '', callId: '', connectedAt: 0 });
+  hangingUp = false;
+  patch({ phase: 'outgoing', peerName: peer.name, peerId: peer.id, error: '', callId: '', connectedAt: 0, muted: false });
   nativeCallScreen(true);
   try {
     local = await navigator.mediaDevices.getUserMedia({ audio: true });
+    applyMute();
     openPeer();
     local.getTracks().forEach(track => pc!.addTrack(track, local!));
     const offer = await pc!.createOffer();
@@ -222,6 +268,7 @@ export async function startOutgoing(peer: { id: string; name: string }) {
 export function showIncoming(call: { id: string; from_user_id: string; from_name: string; offer_sdp?: string | null; is_group?: boolean; title?: string | null }) {
   const snap = getSnapshot();
   if (snap.phase !== 'idle') return;
+  hangingUp = false;
   nativeCallScreen(true);
   if (call?.is_group) {
     group = true;
@@ -320,10 +367,12 @@ async function onGroupSignal(from: string, signal: { kind: string; sdp?: string;
 export async function startGroupCall(conversationId: string, title: string) {
   if (getSnapshot().phase !== 'idle') return;
   group = true;
-  patch({ phase: 'outgoing', peerName: title || 'Group call', peerId: '', error: '', callId: '', connectedAt: 0 });
+  hangingUp = false;
+  patch({ phase: 'outgoing', peerName: title || 'Group call', peerId: '', error: '', callId: '', connectedAt: 0, muted: false });
   nativeCallScreen(true);
   try {
     local = await navigator.mediaDevices.getUserMedia({ audio: true });
+    applyMute();
     const call = await api.post<{ id: string }>('/team-calls', { conversation_id: conversationId });
     callId = call.id;
     patch({ callId: call.id });
@@ -337,6 +386,7 @@ async function acceptGroup() {
   patch({ phase: 'connecting' });
   try {
     local = await navigator.mediaDevices.getUserMedia({ audio: true });
+    applyMute();
     callId = getSnapshot().callId;
     const joined = await api.post<{ peers: { id: string; name: string }[] }>(`/team-calls/${callId}/join`, {});
     for (const peer of joined.peers || []) await offerTo(peer.id);
@@ -357,6 +407,7 @@ export async function acceptIncoming() {
   nativeCallScreen(true);
   try {
     local = await navigator.mediaDevices.getUserMedia({ audio: true });
+    applyMute();
     callId = snap.callId;
     openPeer();
     local.getTracks().forEach(track => pc!.addTrack(track, local!));
@@ -405,16 +456,16 @@ window.__hbDeclineCall = (id: string) => {
 
 export async function declineIncoming() {
   const id = getSnapshot().callId;
+  patch({ phase: 'idle', peerName: '', peerId: '', callId: '', connectedAt: 0, muted: false, error: '' });
   resetMedia();
-  patch({ phase: 'idle', peerName: '', peerId: '', callId: '', connectedAt: 0, error: '' });
   if (id) await api.post(`/team-calls/${id}/decline`, {}).catch(() => {});
 }
 
 export async function hangUp() {
   const id = callId || getSnapshot().callId;
   const duration = talkSeconds();
+  patch({ phase: 'idle', peerName: '', peerId: '', callId: '', connectedAt: 0, muted: false, error: '' });
   resetMedia();
-  patch({ phase: 'idle', peerName: '', peerId: '', callId: '', connectedAt: 0, error: '' });
   if (id) await api.post(`/team-calls/${id}/end`, { duration_sec: duration }).catch(() => {});
 }
 
@@ -439,7 +490,8 @@ export async function onCallEvent(data: any) {
     }
     if (data.action === 'peer-left') {
       const link = peers.get(data.userId);
-      if (link) { link.pc.close(); link.audio.remove(); peers.delete(data.userId); }
+      if (link) { link.pc.close(); link.audio.srcObject = null; link.audio.remove(); peers.delete(data.userId); }
+      if (peers.size === 0 && getSnapshot().phase !== 'incoming' && getSnapshot().phase !== 'idle') hangUp();
       return;
     }
     if (data.action === 'peer-declined') {
@@ -457,6 +509,8 @@ export async function onCallEvent(data: any) {
     return;
   }
   if (['declined', 'ended', 'missed', 'cancelled'].includes(data.action)) {
+    const active = callId || getSnapshot().callId;
+    if (!active || active !== id) return;
     const error = data.action === 'declined' ? 'Call declined' : data.action === 'missed' ? 'No answer' : '';
     const ending = callId;
     const duration = talkSeconds();
@@ -467,6 +521,7 @@ export async function onCallEvent(data: any) {
       peerId: '',
       callId: '',
       connectedAt: 0,
+      muted: false,
       error,
       ...(error ? { toast: { title: 'Call', body: error } } : {}),
     });
