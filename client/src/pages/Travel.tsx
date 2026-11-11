@@ -74,8 +74,6 @@ export default function Travel() {
   const [phone, setPhone] = useState('');
   const [meetDate, setMeetDate] = useState('');
   const [meetTime, setMeetTime] = useState('');
-  const [callNote, setCallNote] = useState('');
-  const [stage, setStage] = useState('planned');
 
   const loadPlans = () => {
     const params = new URLSearchParams();
@@ -123,14 +121,15 @@ export default function Travel() {
     setError('');
     setBusy(true);
     try {
+      const stage = meetDate && meetTime ? 'confirmed' : meetDate ? 'to_schedule' : 'planned';
       await api.post(`/travel/${plan.id}/stops`, {
         agent_id: picked?.id || '',
         agent_name: picked?.name || agentName,
         agency_name: picked?.agency_name || agency,
         phone: picked?.phone || phone,
-        stage, meet_date: meetDate, meet_time: meetTime, call_note: callNote,
+        stage, meet_date: meetDate, meet_time: meetTime,
       });
-      setPicked(null); setAgentQuery(''); setAgentName(''); setAgency(''); setPhone(''); setMeetTime(''); setCallNote(''); setStage('planned');
+      setPicked(null); setAgentQuery(''); setAgentName(''); setAgency(''); setPhone(''); setMeetTime('');
       loadPlan(plan.id);
       loadPlans();
     } catch (err: any) { setError(err.message); } finally { setBusy(false); }
@@ -178,6 +177,7 @@ export default function Travel() {
 
         <form onSubmit={addStop} className="card space-y-3">
           <p className="text-sm font-semibold text-stone-900">Add who he is meeting</p>
+          <p className="text-xs text-stone-500">Search the agent, then add a day and time if it is already fixed. No time means the meeting is only planned. You can also do this from Agent Network.</p>
           <input className="input" placeholder="Search an agent by name, agency, or city" value={picked ? picked.name : agentQuery} onChange={e => { setPicked(null); setAgentQuery(e.target.value); setAgentName(e.target.value); }} />
           {!picked && agents.length > 0 && (
             <div className="rounded-xl border border-stone-200 divide-y divide-stone-100">
@@ -199,10 +199,6 @@ export default function Travel() {
             <input type="date" className="input" min={plan.start_date} max={plan.end_date} value={meetDate} onChange={e => setMeetDate(e.target.value)} />
             <input type="time" className="input" value={meetTime} onChange={e => setMeetTime(e.target.value)} />
           </div>
-          <textarea className="input" rows={2} placeholder="What was said on the call" value={callNote} onChange={e => setCallNote(e.target.value)} />
-          <select className="select" value={stage} onChange={e => setStage(e.target.value)}>
-            {STAGES.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
-          </select>
           <button className="btn-primary" disabled={busy || (!picked && !agentName.trim())}>{busy ? 'Saving…' : 'Add to this trip'}</button>
         </form>
 
@@ -269,7 +265,14 @@ export default function Travel() {
           <button key={item.id} className="card w-full text-left" onClick={() => setOpenId(item.id)}>
             <p className="font-semibold text-stone-900">{item.city}</p>
             <p className="text-sm text-stone-500">{dayLabel(item.start_date)} to {dayLabel(item.end_date)} · {item.user_name}</p>
-            <p className="text-xs text-stone-500 mt-2">{STAGES.map(stageItem => `${stageLabel(stageItem.id)} ${item.stages?.[stageItem.id] || 0}`).join(' · ')}</p>
+            <p className="text-xs text-stone-500 mt-2">
+              {[
+                ['planned', 'planned'],
+                ['to_schedule', 'to schedule'],
+                ['confirmed', 'confirmed'],
+                ['met', 'met'],
+              ].filter(([id]) => (item.stages?.[id] || 0) > 0).map(([id, label]) => `${item.stages?.[id]} ${label}`).join(' · ') || 'No meetings yet'}
+            </p>
           </button>
         ))}
       </div>

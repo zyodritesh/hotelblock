@@ -47,6 +47,21 @@ router.get('/agents', (req: AuthRequest, res: Response) => {
   return res.json(rows);
 });
 
+router.get('/agent/:agentId', (req: AuthRequest, res: Response) => {
+  const params: any[] = [req.params.agentId];
+  let sql = `
+    SELECT s.id, s.stage, s.meet_date, s.meet_time, s.plan_id,
+           p.city, p.title, p.start_date, p.end_date, u.name AS user_name
+    FROM travel_stops s
+    JOIN travel_plans p ON p.id = s.plan_id
+    JOIN users u ON u.id = p.user_id
+    WHERE s.agent_id=?
+  `;
+  if (ownScope(req.user!.role)) { sql += ' AND p.user_id=?'; params.push(req.user!.id); }
+  sql += ' ORDER BY p.start_date, s.meet_date';
+  return res.json(db.prepare(sql).all(...params));
+});
+
 router.get('/', (req: AuthRequest, res: Response) => {
   const q = clean(req.query.q, 80);
   const from = String(req.query.from || '');
@@ -189,6 +204,8 @@ router.post('/:id/stops', (req: AuthRequest, res: Response) => {
   if (!canSee(req, plan.user_id)) return res.status(403).json({ error: 'You can only add meetings on your own travel plan' });
   const agent = resolveAgent(req, req.body, plan.city);
   if (!agent) return res.status(400).json({ error: 'Choose an agent, or type the name' });
+  const already = db.prepare('SELECT id FROM travel_stops WHERE plan_id=? AND agent_id=?').get(plan.id, agent.id);
+  if (already) return res.status(400).json({ error: 'This agent is already on this trip. Change the time on the trip.' });
   const fields = readStop(req.body, plan);
   if ('error' in fields) return res.status(400).json({ error: fields.error });
   const id = uuidv4();

@@ -119,6 +119,42 @@ router.get('/leaderboard', (req: AuthRequest, res: Response) => {
   return res.json(leaderboard);
 });
 
+router.get('/travel', (req: AuthRequest, res: Response) => {
+  const from = String(req.query.from || '');
+  const to = String(req.query.to || '');
+  const dated = DAY.test(from) && DAY.test(to);
+  const params: any[] = [];
+  let where = 'WHERE 1=1';
+  if (ownScope(req.user!.role)) { where += ' AND p.user_id=?'; params.push(req.user!.id); }
+  if (dated) { where += ' AND p.end_date>=? AND p.start_date<=?'; params.push(from, to); }
+  const rows = db.prepare(`
+    SELECT u.name AS person, p.city, p.start_date, p.end_date,
+           s.agent_name, s.agency_name, s.stage, s.meet_date, s.meet_time
+    FROM travel_stops s
+    JOIN travel_plans p ON p.id = s.plan_id
+    JOIN users u ON u.id = p.user_id
+    ${where}
+    ORDER BY p.start_date, u.name, s.meet_date, s.agent_name
+  `).all(...params) as any[];
+  const people = new Map<string, { person: string; planned: number; to_schedule: number; confirmed: number; met: number; missed: number }>();
+  const summary = { trips: 0, planned: 0, to_schedule: 0, confirmed: 0, met: 0, missed: 0 };
+  const tripKeys = new Set<string>();
+  for (const row of rows) {
+    const key = `${row.person}|${row.city}|${row.start_date}`;
+    tripKeys.add(key);
+    const bucket = people.get(row.person) || { person: row.person, planned: 0, to_schedule: 0, confirmed: 0, met: 0, missed: 0 };
+    if (bucket[row.stage as keyof typeof bucket] !== undefined && row.stage !== 'person') {
+      (bucket as any)[row.stage] += 1;
+      (summary as any)[row.stage] += 1;
+    }
+    people.set(row.person, bucket);
+  }
+  summary.trips = tripKeys.size;
+  return res.json({ summary, people: [...people.values()], rows });
+});
+
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
 router.get('/attendance-summary', (req: AuthRequest, res: Response) => {
   const { month } = req.query as Record<string, string>;
   const m = month || new Date().toISOString().slice(0, 7);

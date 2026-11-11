@@ -16,19 +16,21 @@ export default function Reports() {
   const [hotelId, setHotelId] = useState('');
   const [hotels, setHotels] = useState<{ id: string; name: string; city?: string; open_leads: number; pipeline: number; closed_count: number; closed_revenue: number; calls: number; proposals: number }[]>([]);
   const [hotelChoices, setHotelChoices] = useState<{ id: string; name: string }[]>([]);
+  const [travel, setTravel] = useState<{ summary: { trips: number; planned: number; to_schedule: number; confirmed: number; met: number; missed: number }; people: { person: string; planned: number; to_schedule: number; confirmed: number; met: number; missed: number }[]; rows: { person: string; city: string; start_date: string; end_date: string; agent_name: string; agency_name: string; stage: string; meet_date: string | null; meet_time: string }[] }>({ summary: { trips: 0, planned: 0, to_schedule: 0, confirmed: 0, met: 0, missed: 0 }, people: [], rows: [] });
 
   const loadAll = async () => {
     const q = new URLSearchParams();
     if (from && to) { q.set('from', from); q.set('to', to); }
     if (hotelId) q.set('property_id', hotelId);
     const qs = q.toString();
-    const [cs, rev, lb, att, byHotel, props] = await Promise.all([
+    const [cs, rev, lb, att, byHotel, props, trips] = await Promise.all([
       api.get<any>(`/reports/calls-summary${qs ? `?${qs}` : ''}`),
       api.get<any>(`/reports/revenue${hotelId ? `?property_id=${hotelId}` : ''}`),
       api.get<any[]>(`/reports/leaderboard${hotelId ? `?property_id=${hotelId}` : ''}`),
       api.get<any[]>(`/reports/attendance-summary?month=${month}`),
       api.get<any[]>(`/reports/hotels${from && to ? `?from=${from}&to=${to}` : ''}`),
       api.get<{ id: string; name: string }[]>('/properties'),
+      api.get<typeof travel>(`/reports/travel${from && to ? `?from=${from}&to=${to}` : ''}`),
     ]);
     setCallsSummary(cs);
     setRevenue(rev);
@@ -36,6 +38,7 @@ export default function Reports() {
     setAttendanceSummary(att);
     setHotels(byHotel);
     setHotelChoices(props);
+    setTravel(trips);
   };
 
   useEffect(() => { loadAll(); }, [from, to, month, hotelId]);
@@ -177,6 +180,50 @@ export default function Reports() {
             </ResponsiveContainer>
           </div>
         )}
+      </div>
+
+      <div className="card overflow-x-auto">
+        <div className="flex items-center justify-between mb-4 gap-2">
+          <h3 className="font-semibold">Travel meetings</h3>
+          <button className="btn-ghost text-xs" onClick={() => exportCsv(travel.rows, 'travel-meetings')}>Export CSV</button>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
+          {[
+            ['Trips', travel.summary.trips],
+            ['Planned', travel.summary.planned],
+            ['To schedule', travel.summary.to_schedule],
+            ['Confirmed', travel.summary.confirmed],
+            ['Met', travel.summary.met],
+          ].map(([label, value]) => (
+            <div key={String(label)} className="rounded-xl bg-stone-50 px-3 py-2">
+              <p className="text-lg font-semibold text-stone-900">{value}</p>
+              <p className="text-xs text-stone-500">{label}</p>
+            </div>
+          ))}
+        </div>
+        <table className="w-full text-sm">
+          <thead><tr className="text-left text-xs text-gray-500 border-b border-gray-100">
+            <th className="pb-2 font-medium">Person</th>
+            <th className="pb-2 font-medium">City</th>
+            <th className="pb-2 font-medium">Trip</th>
+            <th className="pb-2 font-medium">Agent</th>
+            <th className="pb-2 font-medium">When</th>
+            <th className="pb-2 font-medium">Stage</th>
+          </tr></thead>
+          <tbody>
+            {travel.rows.map((row, index) => (
+              <tr key={`${row.person}-${row.agent_name}-${index}`} className="table-row">
+                <td className="py-3 pr-4">{row.person}</td>
+                <td className="py-3 pr-4">{row.city}</td>
+                <td className="py-3 pr-4">{row.start_date} to {row.end_date}</td>
+                <td className="py-3 pr-4">{row.agent_name}{row.agency_name ? <span className="block text-xs text-gray-400">{row.agency_name}</span> : null}</td>
+                <td className="py-3 pr-4">{row.meet_date ? `${row.meet_date}${row.meet_time ? ` ${row.meet_time}` : ''}` : 'Time not fixed'}</td>
+                <td className="py-3 pr-4">{({ planned: 'Meeting planned', to_schedule: 'To be scheduled', confirmed: 'Confirmed', met: 'Met', missed: 'Missed' } as Record<string, string>)[row.stage] || row.stage}</td>
+              </tr>
+            ))}
+            {travel.rows.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-gray-400">No travel meetings in this period.</td></tr>}
+          </tbody>
+        </table>
       </div>
 
       {/* Leaderboard */}

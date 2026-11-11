@@ -66,6 +66,17 @@ export default function Agents() {
   const [incentiveForm, setIncentiveForm] = useState({ task: '', metric: 'enquiries', target_value: '5', pay_type: 'fixed', rate: '2000' });
   const [sortField, setSortField] = useState<'name' | 'tier' | 'next_due_date' | 'last_contact_date'>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [tripAgent, setTripAgent] = useState<Agent | null>(null);
+  const [tripPlans, setTripPlans] = useState<{ id: string; city: string; start_date: string; end_date: string; user_name: string }[]>([]);
+  const [tripOn, setTripOn] = useState<{ id: string; city: string; start_date: string; end_date: string; stage: string; meet_date: string | null; meet_time: string }[]>([]);
+  const [tripChoice, setTripChoice] = useState('');
+  const [tripCity, setTripCity] = useState('');
+  const [tripStart, setTripStart] = useState(todayISO());
+  const [tripEnd, setTripEnd] = useState(addDaysISO(todayISO(), 3));
+  const [tripDate, setTripDate] = useState('');
+  const [tripTime, setTripTime] = useState('');
+  const [tripSaving, setTripSaving] = useState(false);
+  const [tripError, setTripError] = useState('');
 
   const isAdminOrManager = isAdmin() || isManager();
 
@@ -143,13 +154,71 @@ export default function Agents() {
     setPay({ balance: data.wallet?.balance || 0, incentives: data.incentives || [] });
   };
 
+  const loadTripOn = async (id: string) => {
+    const res = await fetch(`${API}/travel/agent/${id}`, { headers: headers() });
+    const data = await res.json();
+    setTripOn(Array.isArray(data) ? data : []);
+  };
+
+  const openTrip = async (a: Agent) => {
+    setTripAgent(a);
+    setTripError('');
+    setTripCity(a.city || '');
+    setTripStart(todayISO());
+    setTripEnd(addDaysISO(todayISO(), 3));
+    setTripDate('');
+    setTripTime('');
+    const res = await fetch(`${API}/travel`, { headers: headers() });
+    const data = await res.json();
+    const plans = Array.isArray(data) ? data : [];
+    setTripPlans(plans);
+    const sameCity = plans.find((plan: { city: string }) => plan.city.toLowerCase() === (a.city || '').toLowerCase());
+    setTripChoice(sameCity?.id || plans[0]?.id || 'new');
+    loadTripOn(a.id);
+  };
+
+  const saveTrip = async () => {
+    if (!tripAgent) return;
+    setTripSaving(true);
+    setTripError('');
+    try {
+      let planId = tripChoice;
+      if (!planId || planId === 'new') {
+        const created = await fetch(`${API}/travel`, { method: 'POST', headers: headers(), body: JSON.stringify({ city: tripCity, start_date: tripStart, end_date: tripEnd }) });
+        const plan = await created.json();
+        if (!created.ok) throw new Error(plan.error || 'Could not save the trip');
+        planId = plan.id;
+      }
+      const stage = tripDate && tripTime ? 'confirmed' : tripDate ? 'to_schedule' : 'planned';
+      const added = await fetch(`${API}/travel/${planId}/stops`, {
+        method: 'POST', headers: headers(),
+        body: JSON.stringify({
+          agent_id: tripAgent.id,
+          stage,
+          meet_date: tripDate,
+          meet_time: tripTime,
+        }),
+      });
+      const stop = await added.json();
+      if (!added.ok) throw new Error(stop.error || 'Could not add this agent');
+      await loadTripOn(tripAgent.id);
+      setTripDate('');
+      setTripTime('');
+      setTripAgent(null);
+    } catch (err: any) {
+      setTripError(err.message);
+    } finally { setTripSaving(false); }
+  };
+
   const openDetail = async (a: Agent) => {
     setDetailAgent(a);
     setPay(null);
+    setTripOn([]);
     const res = await fetch(`${API}/agents/${a.id}`, { headers: headers() });
     const data = await res.json();
     setDetailData({ activity: data.activity || [], leads: data.leads || [] });
     loadPay(a.id);
+    loadTripOn(a.id);
   };
 
   const addIncentive = async () => {
@@ -341,6 +410,7 @@ export default function Agents() {
                     <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center gap-2">
                         <button onClick={() => openLog(a)} className="text-green-600 hover:text-green-800 text-xs font-medium bg-green-50 px-2 py-1 rounded">Log</button>
+                        <button onClick={() => openTrip(a)} className="text-amber-700 hover:text-amber-900 text-xs font-medium bg-amber-50 px-2 py-1 rounded">Trip</button>
                         <button onClick={() => openEdit(a)} className="text-blue-600 hover:text-blue-800 text-xs font-medium bg-blue-50 px-2 py-1 rounded">Edit</button>
                         {isAdminOrManager && <button onClick={() => deleteAgent(a.id)} className="text-red-500 hover:text-red-700 text-xs font-medium bg-red-50 px-2 py-1 rounded">Del</button>}
                       </div>
@@ -451,6 +521,7 @@ export default function Agents() {
                 </div>
               </div>
               <div className="flex gap-2">
+                <button onClick={() => openTrip(detailAgent)} className="bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-amber-700">Add to trip</button>
                 <button onClick={() => openLog(detailAgent)} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-green-700">+ Log Activity</button>
                 <button onClick={() => { setDetailAgent(null); setDetailData(null); }} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
               </div>
@@ -520,6 +591,19 @@ export default function Agents() {
               </div>
             )}
 
+            <div className="px-6 pb-6">
+              <h3 className="font-semibold text-gray-800 text-sm uppercase tracking-wide mb-3">On a trip</h3>
+              {tripOn.length === 0 && <p className="text-sm text-gray-400">Not on a travel plan yet. Add to trip puts this agent on Ahmedabad, or any city, with a day and time.</p>}
+              <div className="space-y-2">
+                {tripOn.map(stop => (
+                  <div key={stop.id} className="flex items-center justify-between gap-3 bg-amber-50 rounded-lg px-3 py-2 text-sm">
+                    <span className="min-w-0">{stop.city} · {formatDate(stop.start_date)} to {formatDate(stop.end_date)}</span>
+                    <span className="text-xs text-amber-800 shrink-0">{stop.meet_date ? `${formatDate(stop.meet_date)}${stop.meet_time ? ` ${stop.meet_time}` : ''}` : 'Time not fixed'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* Activity Timeline */}
             <div className="px-6 pb-6">
               <h3 className="font-semibold text-gray-800 text-sm uppercase tracking-wide mb-4">Activity Timeline</h3>
@@ -547,6 +631,53 @@ export default function Agents() {
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tripAgent && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-screen overflow-y-auto">
+            <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Add to a trip</h2>
+                <p className="text-sm text-gray-500">{tripAgent.name}{tripAgent.agency_name ? ` — ${tripAgent.agency_name}` : ''}</p>
+              </div>
+              <button onClick={() => setTripAgent(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+            </div>
+            <div className="p-6 space-y-3">
+              {tripError && <div className="bg-red-50 text-red-700 rounded-lg px-3 py-2 text-sm">{tripError}</div>}
+              <div className="space-y-2">
+                {tripPlans.map(plan => (
+                  <label key={plan.id} className="flex items-center gap-2 text-sm">
+                    <input type="radio" checked={tripChoice === plan.id} onChange={() => setTripChoice(plan.id)} />
+                    <span>{plan.city} · {formatDate(plan.start_date)} to {formatDate(plan.end_date)}{isAdminOrManager ? ` · ${plan.user_name}` : ''}</span>
+                  </label>
+                ))}
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="radio" checked={tripChoice === 'new'} onChange={() => setTripChoice('new')} />
+                  <span>New trip</span>
+                </label>
+              </div>
+              {tripChoice === 'new' && (
+                <div className="space-y-2">
+                  <input className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="City" value={tripCity} onChange={e => setTripCity(e.target.value)} />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="date" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={tripStart} onChange={e => setTripStart(e.target.value)} />
+                    <input type="date" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={tripEnd} onChange={e => setTripEnd(e.target.value)} />
+                  </div>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                <input type="date" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={tripDate} onChange={e => setTripDate(e.target.value)} />
+                <input type="time" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value={tripTime} onChange={e => setTripTime(e.target.value)} />
+              </div>
+              <p className="text-xs text-gray-500">Leave the time empty and it stays as meeting planned. Add a day and time and it is confirmed.</p>
+            </div>
+            <div className="p-6 border-t border-gray-200 flex gap-3 justify-end">
+              <button onClick={() => setTripAgent(null)} className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700">Cancel</button>
+              <button onClick={saveTrip} disabled={tripSaving || (tripChoice === 'new' && !tripCity.trim())} className="px-6 py-2 rounded-lg bg-amber-600 text-white font-semibold disabled:opacity-50">{tripSaving ? 'Saving…' : 'Add'}</button>
             </div>
           </div>
         </div>
