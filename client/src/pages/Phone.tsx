@@ -56,6 +56,10 @@ export default function Phone() {
   const navigate = useNavigate();
   const [book, setBook] = useState<Book>({ team: [], contacts: [], recent: [] });
   const [log, setLog] = useState<CallLog[]>([]);
+  const [logQ, setLogQ] = useState('');
+  const [logDirection, setLogDirection] = useState('');
+  const [logStatus, setLogStatus] = useState('');
+  const [teamQ, setTeamQ] = useState('');
   const [q, setQ] = useState('');
   const phase = useSyncExternalStore(subscribe, () => getSnapshot().phase, () => getSnapshot().phase);
   const [notice, setNotice] = useState('');
@@ -67,10 +71,15 @@ export default function Phone() {
     api.get<Book>(`/phone${params}`).then(setBook).catch(() => {});
   };
 
-  const loadLog = () => api.get<CallLog[]>('/team-calls/log').then(setLog).catch(() => {});
-
-  useEffect(() => { load(''); loadLog(); }, []);
-  useEffect(() => { if (phase === 'idle') loadLog(); }, [phase]);
+  useEffect(() => { load(''); }, []);
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (logQ.trim()) params.set('q', logQ.trim());
+    if (logDirection) params.set('direction', logDirection);
+    if (logStatus) params.set('status', logStatus);
+    const qs = params.toString();
+    api.get<CallLog[]>(`/team-calls/log${qs ? `?${qs}` : ''}`).then(setLog).catch(() => {});
+  }, [logQ, logDirection, logStatus, phase]);
 
   useEffect(() => {
     const onPrompt = (event: Event) => {
@@ -123,8 +132,25 @@ export default function Phone() {
 
       <section>
         <h2 className="text-sm font-semibold text-gray-700 mb-2">Call log</h2>
+        <div className="bg-white border border-gray-200 rounded-xl p-3 space-y-2 mb-2">
+          <input className="input" placeholder="Search a name" value={logQ} onChange={e => setLogQ(e.target.value)} />
+          <div className="grid grid-cols-2 gap-2">
+            <select className="select" value={logDirection} onChange={e => setLogDirection(e.target.value)}>
+              <option value="">All directions</option>
+              <option value="in">Incoming</option>
+              <option value="out">Outgoing</option>
+            </select>
+            <select className="select" value={logStatus} onChange={e => setLogStatus(e.target.value)}>
+              <option value="">All results</option>
+              <option value="ended">Connected</option>
+              <option value="missed">Missed</option>
+              <option value="declined">Declined</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+        </div>
         <div className="space-y-2">
-          {log.length === 0 && <p className="text-sm text-gray-400">Team calls are saved here, with the time and how long you were connected.</p>}
+          {log.length === 0 && <p className="text-sm text-gray-400">No calls match this search.</p>}
           {log.map(row => (
             <div key={row.id} className="bg-white border border-gray-200 rounded-xl px-3 py-3 flex items-center gap-3">
               <div className="flex-1 min-w-0">
@@ -138,8 +164,12 @@ export default function Phone() {
 
       <section>
         <h2 className="text-sm font-semibold text-gray-700 mb-2">Team</h2>
+        <input className="input mb-2" placeholder="Search a teammate" value={teamQ} onChange={e => setTeamQ(e.target.value)} />
         <div className="space-y-2">
-          {book.team.map(person => (
+          {book.team.filter(person => !teamQ.trim() || `${person.name} ${roleLabel(person.role)}`.toLowerCase().includes(teamQ.trim().toLowerCase())).length === 0 && (
+            <p className="text-sm text-gray-400">No teammate matches this search.</p>
+          )}
+          {book.team.filter(person => !teamQ.trim() || `${person.name} ${roleLabel(person.role)}`.toLowerCase().includes(teamQ.trim().toLowerCase())).map(person => (
             <div key={person.id} className="bg-white border border-gray-200 rounded-xl px-3 py-3 flex items-center gap-3">
               <div className="relative w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-semibold">
                 {person.name[0]}

@@ -15,6 +15,7 @@ export default function Dashboard() {
   const [agentsDue, setAgentsDue] = useState<any[]>([]);
   const [agentCompliance, setAgentCompliance] = useState<number | null>(null);
   const { user, token } = useAuthStore();
+  const [callSearch, setCallSearch] = useState('');
 
   useEffect(() => {
     api.get<any>('/reports/dashboard').then(setData).finally(() => setLoading(false));
@@ -147,13 +148,18 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Calls */}
         <div className="card">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-3 gap-2">
             <h3 className="font-semibold text-gray-800">Recent Calls</h3>
-            <Link to="/calls" className="text-sm text-blue-600 hover:underline">View all →</Link>
+            <Link to="/calls" className="text-sm text-blue-600 hover:underline shrink-0">View all →</Link>
           </div>
+          <input className="input mb-3" placeholder="Search name, company, or outcome" value={callSearch} onChange={e => setCallSearch(e.target.value)} />
           <div className="space-y-2">
             {data.recentCalls.length === 0 && <p className="text-gray-400 text-sm">No calls yet today.</p>}
-            {data.recentCalls.map((call: any) => (
+            {data.recentCalls.filter((call: any) => {
+              const needle = callSearch.trim().toLowerCase();
+              if (!needle) return true;
+              return `${call.contact_name || ''} ${call.company || ''} ${call.segment || ''} ${call.outcome || ''}`.toLowerCase().includes(needle);
+            }).map((call: any) => (
               <div key={call.id} className="flex items-start gap-3 py-2 border-b border-gray-50 last:border-0">
                 <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-sm flex-shrink-0">📞</div>
                 <div className="flex-1 min-w-0">

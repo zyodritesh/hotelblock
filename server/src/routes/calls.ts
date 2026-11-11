@@ -8,17 +8,22 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/', (req: AuthRequest, res: Response) => {
-  const { user_id, segment, outcome, from, to, search, property_id, limit = '50', offset = '0' } = req.query as Record<string, string>;
+  const { user_id, segment, outcome, call_type, from, to, search, property_id, limit = '50', offset = '0' } = req.query as Record<string, string>;
   let base = `FROM calls c LEFT JOIN users u ON c.user_id = u.id LEFT JOIN properties pr ON c.property_id = pr.id WHERE 1=1`;
   const params: any[] = [];
   if (ownScope(req.user!.role)) { base += ' AND c.user_id = ?'; params.push(req.user!.id); }
   else if (user_id) { base += ' AND c.user_id = ?'; params.push(user_id); }
   if (segment) { base += ' AND c.segment = ?'; params.push(segment); }
   if (outcome) { base += ' AND c.outcome = ?'; params.push(outcome); }
+  if (call_type) { base += ' AND c.call_type = ?'; params.push(call_type); }
   if (from) { base += ' AND date(c.created_at) >= ?'; params.push(from); }
   if (to) { base += ' AND date(c.created_at) <= ?'; params.push(to); }
   if (property_id) { base += ' AND c.property_id = ?'; params.push(property_id); }
-  if (search) { base += ' AND (c.contact_name LIKE ? OR c.company LIKE ? OR c.phone LIKE ?)'; const s = `%${search}%`; params.push(s, s, s); }
+  if (search) {
+    base += ' AND (c.contact_name LIKE ? OR c.company LIKE ? OR c.phone LIKE ? OR c.notes LIKE ? OR u.name LIKE ? OR pr.name LIKE ?)';
+    const s = `%${search}%`;
+    params.push(s, s, s, s, s, s);
+  }
   const total = (db.prepare(`SELECT COUNT(*) as c ${base}`).get(...params) as any).c;
   const rows = db.prepare(`SELECT c.*, u.name as user_name, pr.name as property_name ${base} ORDER BY c.created_at DESC LIMIT ? OFFSET ?`).all(...params, parseInt(limit), parseInt(offset));
   return res.json({ data: rows, total });

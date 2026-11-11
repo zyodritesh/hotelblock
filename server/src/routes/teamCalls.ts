@@ -84,14 +84,29 @@ router.get('/incoming', (req: AuthRequest, res: Response) => {
 
 router.get('/log', (req: AuthRequest, res: Response) => {
   const me = req.user!.id;
+  const q = String(req.query.q || '').trim().toLowerCase();
+  const direction = String(req.query.direction || '');
+  const status = String(req.query.status || '');
+  const from = String(req.query.from || '');
+  const to = String(req.query.to || '');
   const rows = db.prepare(`SELECT c.id, c.from_user_id, c.to_user_id, c.status, c.created_at, c.answered_at, c.ended_at, IFNULL(c.duration_sec, 0) as duration_sec,
       IFNULL(c.is_group, 0) as is_group, c.conversation_id, fu.name as from_name, tu.name as to_name, cv.title as chat_title
     FROM team_calls c
     LEFT JOIN users fu ON fu.id=c.from_user_id
     LEFT JOIN users tu ON tu.id=c.to_user_id
     LEFT JOIN conversations cv ON cv.id=c.conversation_id
-    WHERE c.from_user_id=? OR c.to_user_id=? OR c.id IN (SELECT call_id FROM call_participants WHERE user_id=?)
-    ORDER BY c.created_at DESC LIMIT 40`).all(me, me, me) as any[];
+    WHERE (c.from_user_id=? OR c.to_user_id=? OR c.id IN (SELECT call_id FROM call_participants WHERE user_id=?))
+      AND (? = '' OR c.status = ?)
+      AND (? = '' OR date(c.created_at) >= ?)
+      AND (? = '' OR date(c.created_at) <= ?)
+      AND (? = '' OR (? = 'out' AND c.from_user_id = ?) OR (? = 'in' AND c.from_user_id != ?))
+    ORDER BY c.created_at DESC LIMIT 200`).all(
+    me, me, me,
+    status, status,
+    from, from,
+    to, to,
+    direction, direction, me, direction, me,
+  ) as any[];
   return res.json(rows.map(row => {
     const endedAt = row.ended_at || '';
     const duration = row.duration_sec || (row.status === 'ended' ? durationOf(row, endedAt) : 0);
@@ -107,7 +122,7 @@ router.get('/log', (req: AuthRequest, res: Response) => {
       created_at: row.created_at,
       is_group: !!row.is_group,
     };
-  }));
+  }).filter(row => !q || row.peer_name.toLowerCase().includes(q)));
 });
 
 router.get('/:id', (req: AuthRequest, res: Response) => {

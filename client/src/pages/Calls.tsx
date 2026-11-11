@@ -29,7 +29,7 @@ export default function Calls() {
   const [showModal, setShowModal] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [filters, setFilters] = useState({ segment: '', outcome: '', from: '', to: '', user_id: '', property_id: '' });
+  const [filters, setFilters] = useState({ segment: '', call_type: '', outcome: '', from: '', to: '', user_id: '', property_id: '' });
   const [users, setUsers] = useState<any[]>([]);
   const [hotels, setHotels] = useState<Hotel[]>([]);
   const [loading, setLoading] = useState(false);
@@ -40,6 +40,7 @@ export default function Calls() {
     try {
       const q = new URLSearchParams();
       if (filters.segment) q.append('segment', filters.segment);
+      if (filters.call_type) q.append('call_type', filters.call_type);
       if (filters.outcome) q.append('outcome', filters.outcome);
       if (filters.from) q.append('from', filters.from);
       if (filters.to) q.append('to', filters.to);
@@ -85,6 +86,7 @@ export default function Calls() {
     // Export all matching records (no pagination)
     const q = new URLSearchParams();
     if (filters.segment) q.append('segment', filters.segment);
+    if (filters.call_type) q.append('call_type', filters.call_type);
     if (filters.outcome) q.append('outcome', filters.outcome);
     if (filters.from) q.append('from', filters.from);
     if (filters.to) q.append('to', filters.to);
@@ -117,38 +119,61 @@ export default function Calls() {
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white rounded-xl border border-gray-200 p-3">
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+      <div className="bg-white rounded-xl border border-gray-200 p-3 space-y-3">
+        <label className="block text-xs font-medium text-gray-600">Search
           <input
-            type="text" placeholder="🔍 Search name, company, phone…"
-            className="input flex-shrink-0 text-xs py-1.5 w-48 sm:w-56"
-            value={search} onChange={e => setSearch(e.target.value)}
+            type="search"
+            placeholder="Name, company, phone, or notes"
+            className="input mt-1"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
           />
-          <select className="select flex-shrink-0 text-xs w-28 py-1.5" value={filters.segment} onChange={e => setFilters(f => ({ ...f, segment: e.target.value }))}>
-            <option value="">All Segments</option>
-            {SEGMENTS.map(s => <option key={s}>{s}</option>)}
-          </select>
-          <select className="select flex-shrink-0 text-xs w-36 py-1.5" value={filters.outcome} onChange={e => setFilters(f => ({ ...f, outcome: e.target.value }))}>
-            <option value="">All Outcomes</option>
-            {CALL_OUTCOMES.map(o => <option key={o}>{o}</option>)}
-          </select>
-          <input type="date" className="input flex-shrink-0 w-32 text-xs py-1.5" value={filters.from} onChange={e => setFilters(f => ({ ...f, from: e.target.value }))} />
-          <input type="date" className="input flex-shrink-0 w-32 text-xs py-1.5" value={filters.to} onChange={e => setFilters(f => ({ ...f, to: e.target.value }))} />
-          <select className="select flex-shrink-0 text-xs w-40 py-1.5" value={filters.property_id} onChange={e => setFilters(f => ({ ...f, property_id: e.target.value }))}>
-            <option value="">All hotels</option>
-            {hotels.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
-          </select>
-          {isManager() && (
-            <select className="select flex-shrink-0 text-xs w-36 py-1.5" value={filters.user_id} onChange={e => setFilters(f => ({ ...f, user_id: e.target.value }))}>
-              <option value="">All Staff</option>
-              {users.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
+        </label>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+          <label className="block text-xs font-medium text-gray-600">Segment
+            <select className="select mt-1" value={filters.segment} onChange={e => setFilters(f => ({ ...f, segment: e.target.value }))}>
+              <option value="">All segments</option>
+              {SEGMENTS.map(s => <option key={s}>{s}</option>)}
             </select>
+          </label>
+          <label className="block text-xs font-medium text-gray-600">Type
+            <select className="select mt-1" value={filters.call_type} onChange={e => setFilters(f => ({ ...f, call_type: e.target.value }))}>
+              <option value="">All types</option>
+              {CALL_TYPES.map(s => <option key={s}>{s}</option>)}
+            </select>
+          </label>
+          <label className="block text-xs font-medium text-gray-600">Outcome
+            <select className="select mt-1" value={filters.outcome} onChange={e => setFilters(f => ({ ...f, outcome: e.target.value }))}>
+              <option value="">All outcomes</option>
+              {CALL_OUTCOMES.map(o => <option key={o}>{o}</option>)}
+            </select>
+          </label>
+          <label className="block text-xs font-medium text-gray-600">Hotel
+            <select className="select mt-1" value={filters.property_id} onChange={e => setFilters(f => ({ ...f, property_id: e.target.value }))}>
+              <option value="">All hotels</option>
+              {hotels.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+            </select>
+          </label>
+          {isManager() && (
+            <label className="block text-xs font-medium text-gray-600">Staff
+              <select className="select mt-1" value={filters.user_id} onChange={e => setFilters(f => ({ ...f, user_id: e.target.value }))}>
+                <option value="">All staff</option>
+                {users.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            </label>
           )}
+          <label className="block text-xs font-medium text-gray-600">From
+            <input type="date" className="input mt-1" value={filters.from} onChange={e => setFilters(f => ({ ...f, from: e.target.value }))} />
+          </label>
+          <label className="block text-xs font-medium text-gray-600">To
+            <input type="date" className="input mt-1" value={filters.to} onChange={e => setFilters(f => ({ ...f, to: e.target.value }))} />
+          </label>
+        </div>
+        <div className="flex gap-2">
           {(search || Object.values(filters).some(v => v)) && (
-            <button className="btn-ghost text-xs flex-shrink-0 px-3 py-1.5" onClick={() => { setSearch(''); setFilters({ segment: '', outcome: '', from: '', to: '', user_id: '', property_id: '' }); }}>✕ Clear</button>
+            <button type="button" className="btn-secondary text-sm" onClick={() => { setSearch(''); setFilters({ segment: '', call_type: '', outcome: '', from: '', to: '', user_id: '', property_id: '' }); }}>Clear filters</button>
           )}
-          <button onClick={handleExport} className="btn-ghost text-xs flex-shrink-0 px-3 py-1.5 sm:hidden">⬇ Export</button>
+          <button type="button" onClick={handleExport} className="btn-secondary text-sm sm:hidden">Export</button>
         </div>
       </div>
 
@@ -158,7 +183,7 @@ export default function Calls() {
       <div className="md:hidden space-y-2">
         {!loading && calls.length === 0 && (
           <div className="bg-white rounded-xl border border-gray-200 py-12 text-center text-gray-400">
-            No calls found. Tap ⚡ Quick Log or + Log Call.
+            No calls match this search.
           </div>
         )}
         {calls.map(call => (
@@ -169,7 +194,7 @@ export default function Calls() {
                   <span className="font-semibold text-gray-900 text-sm">{call.contact_name || '—'}</span>
                   <span className={`badge text-xs ${SEGMENT_COLORS[call.segment] || 'bg-gray-100 text-gray-600'}`}>{call.segment}</span>
                 </div>
-                {call.company && <p className="text-xs text-gray-500 mt-0.5">{call.company}</p>}
+                {(call.company || call.property_name) && <p className="text-xs text-gray-500 mt-0.5">{[call.company, call.property_name].filter(Boolean).join(' · ')}</p>}
                 <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                   <span className={`badge text-xs ${OUTCOME_COLORS[call.outcome] || 'bg-gray-100 text-gray-600'}`}>{call.outcome}</span>
                   <span className="text-xs text-gray-400">{call.call_type}</span>
