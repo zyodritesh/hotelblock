@@ -20,8 +20,8 @@
     "path": "./hotelblock.keystore",
     "alias": "hotelblock"
   },
-  "appVersionName": "1.0.6",
-  "appVersionCode": 7,
+  "appVersionName": "1.0.7",
+  "appVersionCode": 8,
   "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
   "webManifestUrl": "https://keyword-blake-fire-cia.trycloudflare.com/manifest.webmanifest",
@@ -40,5 +40,5 @@
   "additionalTrustedOrigins": [],
   "retainedBundles": [],
   "displayOverride": [],
-  "appVersion": "1.0.6"
+  "appVersion": "1.0.7"
 }

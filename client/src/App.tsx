@@ -23,6 +23,7 @@ import AgentDue from './pages/AgentDue';
 import Wallet from './pages/Wallet';
 import AgentPortal from './pages/AgentPortal';
 import AgentOffers from './pages/AgentOffers';
+import AppInstalls from './pages/AppInstalls';
 import AgentRewards from './pages/AgentRewards';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -38,6 +39,12 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 function RequireAdmin({ children }: { children: React.ReactNode }) {
   const { isAdmin } = useAuthStore();
   if (!isAdmin()) return <Navigate to="/" replace />;
+  return <>{children}</>;
+}
+
+function RequireManager({ children }: { children: React.ReactNode }) {
+  const { isManager } = useAuthStore();
+  if (!isManager()) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
@@ -66,6 +73,7 @@ export default function App() {
         <Route path="/settings" element={<RequireAuth><RequireAdmin><Settings /></RequireAdmin></RequireAuth>} />
         <Route path="/agent" element={<RequireAuth><AgentPortal /></RequireAuth>} />
         <Route path="/agent-offers" element={<RequireAuth><AgentOffers /></RequireAuth>} />
+        <Route path="/app-installs" element={<RequireAuth><RequireManager><AppInstalls /></RequireManager></RequireAuth>} />
         <Route path="/agent-rewards" element={<RequireAuth><AgentRewards /></RequireAuth>} />
         <Route path="/agents" element={<RequireAuth><Agents /></RequireAuth>} />
         <Route path="/agents/due" element={<RequireAuth><AgentDue /></RequireAuth>} />

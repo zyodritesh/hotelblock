@@ -11,6 +11,7 @@ import android.content.pm.ServiceInfo;
 import android.media.AudioAttributes;
 import android.media.RingtoneManager;
 import android.net.Uri;
+import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
@@ -20,8 +21,12 @@ import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
+import java.util.HashSet;
+import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -34,11 +39,40 @@ public class CallWatchService extends Service {
     static final String PREFS = "hotelblock_calls";
     static final String CALL_CHANNEL = "hotelblock_calls";
     private static final String READY_CHANNEL = "hotelblock_ready";
+    private static final String MESSAGE_CHANNEL = "hotelblock_messages";
     private static final int READY_ID = 41;
     private static final int CALL_ID = 42;
     private static String shownId = "";
+    private int alertTick = 0;
+    private final HashSet<String> shownAlerts = new HashSet<>();
 
     private final ScheduledExecutorService clock = Executors.newSingleThreadScheduledExecutor();
+
+    static String deviceId(Context context) {
+        android.content.SharedPreferences prefs = context.getSharedPreferences(PREFS, MODE_PRIVATE);
+        String id = prefs.getString("device_id", "");
+        if (id == null || id.isEmpty()) {
+            id = UUID.randomUUID().toString();
+            prefs.edit().putString("device_id", id).apply();
+        }
+        return id;
+    }
+
+    static String deviceLabel() {
+        String maker = Build.MANUFACTURER == null ? "" : Build.MANUFACTURER;
+        String model = Build.MODEL == null ? "Android" : Build.MODEL;
+        if (model.toLowerCase().startsWith(maker.toLowerCase())) return model;
+        return (maker + " " + model).trim();
+    }
+
+    static String appVersion(Context context) {
+        try {
+            String version = context.getPackageManager().getPackageInfo(context.getPackageName(), 0).versionName;
+            return version == null ? "" : version;
+        } catch (PackageManager.NameNotFoundException ignored) {
+            return "";
+        }
+    }
 
     static void arm(Context context, String token) {
         Context app = context.getApplicationContext();
@@ -137,6 +171,10 @@ public class CallWatchService extends Service {
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build());
         manager.createNotificationChannel(calls);
+        NotificationChannel messages = new NotificationChannel(MESSAGE_CHANNEL, "HotelBlock messages", NotificationManager.IMPORTANCE_HIGH);
+        messages.setDescription("Rates, offers, and messages sent from HotelBlock");
+        messages.enableVibration(true);
+        manager.createNotificationChannel(messages);
     }
 
     private Notification readyNotification() {
@@ -162,21 +200,78 @@ public class CallWatchService extends Service {
             int code = conn.getResponseCode();
             String body = read(code >= 400 ? conn.getErrorStream() : conn.getInputStream());
             conn.disconnect();
-            if (code == 401 || body == null) return;
-            String trimmed = body.trim();
-            if (trimmed.isEmpty() || "null".equals(trimmed)) {
-                shownId = "";
-                cancelCall(this);
-                IncomingCallActivity.finishIfShowing();
-                return;
+            if (code != 401 && body != null) {
+                String trimmed = body.trim();
+                if (trimmed.isEmpty() || "null".equals(trimmed)) {
+                    shownId = "";
+                    cancelCall(this);
+                    IncomingCallActivity.finishIfShowing();
+                } else {
+                    JSONObject call = new JSONObject(trimmed);
+                    String id = call.optString("id", "");
+                    if (!id.isEmpty()) {
+                        String name = call.optString("from_name", "Teammate");
+                        if (call.optBoolean("is_group") && call.optString("title").length() > 0) name = call.optString("title");
+                        showIncoming(id, name);
+                    }
+                }
             }
-            JSONObject call = new JSONObject(trimmed);
-            String id = call.optString("id", "");
-            if (id.isEmpty()) return;
-            String name = call.optString("from_name", "Teammate");
-            if (call.optBoolean("is_group") && call.optString("title").length() > 0) name = call.optString("title");
-            showIncoming(id, name);
         } catch (Exception ignored) { /* the next poll tries again */ }
+        pollAlert();
+    }
+
+    private void pollAlert() {
+        alertTick += 1;
+        String token = getSharedPreferences(PREFS, MODE_PRIVATE).getString("token", "");
+        if (token == null || token.isEmpty()) return;
+        String device = deviceId(this);
+        if (alertTick % 15 == 1) {
+            try {
+                JSONObject ping = new JSONObject();
+                ping.put("id", device);
+                ping.put("label", deviceLabel());
+                ping.put("version", appVersion(this));
+                postJson(origin(this) + "/api/devices/ping", token, ping.toString());
+            } catch (Exception ignored) { /* the web page also registers the phone */ }
+        }
+        try {
+            String encoded = URLEncoder.encode(device, "UTF-8");
+            HttpURLConnection conn = (HttpURLConnection) new URL(origin(this) + "/api/devices/pending?device=" + encoded).openConnection();
+            conn.setConnectTimeout(4000);
+            conn.setReadTimeout(4000);
+            conn.setRequestProperty("Authorization", "Bearer " + token);
+            int code = conn.getResponseCode();
+            String body = read(code >= 400 ? conn.getErrorStream() : conn.getInputStream());
+            conn.disconnect();
+            if (code != 200 || body == null || body.trim().isEmpty()) return;
+            JSONObject payload = new JSONObject(body);
+            if (payload.isNull("alert")) return;
+            JSONObject alert = payload.getJSONObject("alert");
+            String id = alert.optString("id", "");
+            if (id.isEmpty() || shownAlerts.contains(id)) return;
+            shownAlerts.add(id);
+            showMessage(id, alert.optString("title", "HotelBlock"), alert.optString("body", ""));
+            if (!postJson(origin(this) + "/api/devices/pending/" + id + "/seen", token, "{}")) shownAlerts.remove(id);
+        } catch (Exception ignored) { /* the next poll tries again */ }
+    }
+
+    private void showMessage(String id, String title, String body) {
+        Intent open = new Intent(this, LauncherActivity.class);
+        open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent openPi = PendingIntent.getActivity(this, 20 + Math.abs(id.hashCode() % 50), open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        Notification.Builder builder = Build.VERSION.SDK_INT >= 26
+                ? new Notification.Builder(this, MESSAGE_CHANNEL)
+                : new Notification.Builder(this);
+        Notification note = builder
+                .setSmallIcon(R.drawable.ic_notification_icon)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setStyle(new Notification.BigTextStyle().bigText(body))
+                .setAutoCancel(true)
+                .setContentIntent(openPi)
+                .build();
+        NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (manager != null) manager.notify(1000 + Math.abs(id.hashCode() % 8000), note);
     }
 
     private void showIncoming(String id, String name) {
@@ -220,7 +315,11 @@ public class CallWatchService extends Service {
     }
 
     private static void post(String url, String token) {
-        if (token == null || token.isEmpty()) return;
+        postJson(url, token, "{}");
+    }
+
+    private static boolean postJson(String url, String token, String json) {
+        if (token == null || token.isEmpty()) return false;
         try {
             HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
             conn.setRequestMethod("POST");
@@ -229,10 +328,17 @@ public class CallWatchService extends Service {
             conn.setRequestProperty("Authorization", "Bearer " + token);
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setDoOutput(true);
-            conn.getOutputStream().write("{}".getBytes());
-            conn.getResponseCode();
+            byte[] bytes = json.getBytes();
+            conn.setFixedLengthStreamingMode(bytes.length);
+            OutputStream out = conn.getOutputStream();
+            out.write(bytes);
+            out.close();
+            int code = conn.getResponseCode();
             conn.disconnect();
-        } catch (Exception ignored) { /* the web app also declines if it is open */ }
+            return code >= 200 && code < 300;
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private static String read(InputStream stream) throws Exception {

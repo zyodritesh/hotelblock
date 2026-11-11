@@ -27,6 +27,7 @@ const NAV_ITEMS = [
   { path: '/wallet', label: 'Incentive Wallet', icon: '👛' },
   { path: '/agents', label: 'Agent Network', icon: '🌐' },
   { path: '/agent-offers', label: 'Agent offers', icon: '📣' },
+  { path: '/app-installs', label: 'Installed apps', icon: '📱' },
   { path: '/agent-rewards', label: 'Agent free nights', icon: '🌙' },
   { path: '/agents/due', label: 'My Follow-ups', icon: '🔔', badge: true },
   { path: '/reports', label: 'Reports', icon: '📈' },
@@ -38,7 +39,7 @@ interface Property { id: string; name: string; city: string; logo_path: string |
 export default function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, token, logout, isAdmin, activePropertyId, setActiveProperty } = useAuthStore();
+  const { user, token, logout, isAdmin, isManager, activePropertyId, setActiveProperty } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [properties, setProperties] = useState<Property[]>([]);
   const [overdueCount, setOverdueCount] = useState(0);
@@ -92,6 +93,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const navItems = NAV_ITEMS.filter(item => {
     if (item.path === '/settings') return isAdmin();
+    if (item.path === '/app-installs') return isManager();
     return true;
   });
 

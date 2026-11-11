@@ -17,7 +17,7 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
     const payload = jwt.verify(token, JWT_SECRET) as { id: string; email: string; role: string; name: string };
     req.user = payload;
     const url = req.originalUrl || '';
-    const agentAllowed = url.startsWith('/api/auth') || url.startsWith('/api/agent-portal') || url.startsWith('/api/push');
+    const agentAllowed = url.startsWith('/api/auth') || url.startsWith('/api/agent-portal') || url.startsWith('/api/push') || url.startsWith('/api/devices');
     if (payload.role === 'agent' && !agentAllowed) {
       return res.status(403).json({ error: 'Agents use their own portal' });
     }

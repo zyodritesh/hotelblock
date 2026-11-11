@@ -151,6 +151,32 @@ export function initDb() {
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
 
+    CREATE TABLE IF NOT EXISTS app_devices (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      label TEXT NOT NULL,
+      app_version TEXT NOT NULL DEFAULT '',
+      last_seen TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS app_messages (
+      id TEXT PRIMARY KEY,
+      sender_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS app_message_targets (
+      id TEXT PRIMARY KEY,
+      message_id TEXT NOT NULL,
+      device_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      delivered_at TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS messages (
       id TEXT PRIMARY KEY,
       from_user_id TEXT NOT NULL,

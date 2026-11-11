@@ -284,6 +284,19 @@ public class LauncherActivity extends Activity {
         }
 
         @JavascriptInterface
+        public String deviceInfo() {
+            try {
+                JSONObject info = new JSONObject();
+                info.put("id", CallWatchService.deviceId(LauncherActivity.this));
+                info.put("label", CallWatchService.deviceLabel());
+                info.put("version", CallWatchService.appVersion(LauncherActivity.this));
+                return info.toString();
+            } catch (Exception ignored) {
+                return "{}";
+            }
+        }
+
+        @JavascriptInterface
         public void stopCalls() {
             CallWatchService.stop(LauncherActivity.this);
         }

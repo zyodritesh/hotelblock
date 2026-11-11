@@ -63,6 +63,16 @@ export default function LiveProvider() {
 
   useEffect(() => {
     if (!token) return;
+    const bridge = (window as unknown as { HotelBlockNative?: { deviceInfo?: () => string } }).HotelBlockNative;
+    if (!bridge?.deviceInfo) return;
+    try {
+      const info = JSON.parse(bridge.deviceInfo()) as { id?: string; label?: string; version?: string };
+      if (info?.id) api.post('/devices/ping', info).catch(() => {});
+    } catch { /* an older app has no phone id yet */ }
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
     const controller = new AbortController();
     let stopped = false;
 
