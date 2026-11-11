@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { path: '/chat', label: 'Team Chat', icon: '💬', badge: 'chat' },
   { path: '/calls', label: 'Calls', icon: '📞' },
   { path: '/meetings', label: 'Meetings', icon: '🤝' },
+  { path: '/travel', label: 'Travel plans', icon: '🧳' },
   { path: '/pipeline', label: 'Pipeline', icon: '🔄' },
   { path: '/calendar', label: 'Calendar', icon: '📅' },
   { path: '/accounts', label: 'Accounts', icon: '🏢' },

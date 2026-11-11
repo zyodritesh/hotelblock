@@ -106,6 +106,39 @@ export function initDb() {
       FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE SET NULL
     );
 
+    CREATE TABLE IF NOT EXISTS travel_plans (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      city TEXT NOT NULL,
+      title TEXT NOT NULL,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      notes TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'planning',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_stops (
+      id TEXT PRIMARY KEY,
+      plan_id TEXT NOT NULL,
+      agent_id TEXT,
+      agent_name TEXT NOT NULL,
+      agency_name TEXT NOT NULL DEFAULT '',
+      phone TEXT NOT NULL DEFAULT '',
+      stage TEXT NOT NULL DEFAULT 'planned',
+      meet_date TEXT,
+      meet_time TEXT NOT NULL DEFAULT '',
+      call_note TEXT NOT NULL DEFAULT '',
+      outcome_note TEXT NOT NULL DEFAULT '',
+      call_activity_id TEXT,
+      meeting_activity_id TEXT,
+      meeting_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (plan_id) REFERENCES travel_plans(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS leads (
       id TEXT PRIMARY KEY,
       account_id TEXT,

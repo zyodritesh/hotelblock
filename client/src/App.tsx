@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard';
 import Attendance from './pages/Attendance';
 import Calls from './pages/Calls';
 import Meetings from './pages/Meetings';
+import Travel from './pages/Travel';
 import Pipeline from './pages/Pipeline';
 import Calendar from './pages/Calendar';
 import Phone from './pages/Phone';
@@ -57,6 +58,7 @@ export default function App() {
         <Route path="/attendance" element={<RequireAuth><Attendance /></RequireAuth>} />
         <Route path="/calls" element={<RequireAuth><Calls /></RequireAuth>} />
         <Route path="/meetings" element={<RequireAuth><Meetings /></RequireAuth>} />
+        <Route path="/travel" element={<RequireAuth><Travel /></RequireAuth>} />
         <Route path="/pipeline" element={<RequireAuth><Pipeline /></RequireAuth>} />
         <Route path="/calendar" element={<RequireAuth><Calendar /></RequireAuth>} />
         <Route path="/phone" element={<RequireAuth><Phone /></RequireAuth>} />

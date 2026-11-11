@@ -28,10 +28,12 @@ import phoneRoutes from './routes/phone';
 import liveRoutes from './routes/live';
 import pushRoutes from './routes/push';
 import deviceRoutes from './routes/devices';
+import travelRoutes, { ensureSampleTrip } from './routes/travel';
 import agentPortalRoutes from './routes/agentPortal';
 import { initPush } from './push';
 
 initDb();
+ensureSampleTrip();
 initPush();
 setInterval(sweepMissedCalls, 15000);
 
@@ -49,6 +51,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/calls', callsRoutes);
 app.use('/api/meetings', meetingsRoutes);
+app.use('/api/travel', travelRoutes);
 app.use('/api/accounts', accountsRoutes);
 app.use('/api/contacts', contactsRoutes);
 app.use('/api/leads', leadsRoutes);
