@@ -51,15 +51,79 @@ router.get('/agent/:agentId', (req: AuthRequest, res: Response) => {
   const params: any[] = [req.params.agentId];
   let sql = `
     SELECT s.id, s.stage, s.meet_date, s.meet_time, s.plan_id,
-           p.city, p.title, p.start_date, p.end_date, u.name AS user_name
+           p.title, p.start_date, p.end_date,
+           COALESCE(p.city, s.city) AS city,
+           u.name AS user_name
     FROM travel_stops s
-    JOIN travel_plans p ON p.id = s.plan_id
-    JOIN users u ON u.id = p.user_id
+    LEFT JOIN travel_plans p ON p.id = s.plan_id
+    JOIN users u ON u.id = COALESCE(p.user_id, s.user_id)
     WHERE s.agent_id=?
   `;
-  if (ownScope(req.user!.role)) { sql += ' AND p.user_id=?'; params.push(req.user!.id); }
-  sql += ' ORDER BY p.start_date, s.meet_date';
+  if (ownScope(req.user!.role)) { sql += ' AND COALESCE(p.user_id, s.user_id)=?'; params.push(req.user!.id); }
+  sql += ' ORDER BY COALESCE(s.meet_date, p.start_date), s.meet_time';
   return res.json(db.prepare(sql).all(...params));
+});
+
+router.get('/meetings', (req: AuthRequest, res: Response) => {
+  const params: any[] = [];
+  let sql = `
+    SELECT s.*, u.name AS user_name
+    FROM travel_stops s
+    JOIN users u ON u.id = s.user_id
+    WHERE s.plan_id IS NULL
+  `;
+  if (ownScope(req.user!.role)) { sql += ' AND s.user_id=?'; params.push(req.user!.id); }
+  sql += ' ORDER BY COALESCE(s.meet_date, s.created_at), s.meet_time, s.agent_name';
+  return res.json(db.prepare(sql).all(...params));
+});
+
+router.post('/meetings', (req: AuthRequest, res: Response) => {
+  const agent = resolveAgent(req, req.body, clean(req.body?.city, 80));
+  if (!agent) return res.status(400).json({ error: 'Choose an agent' });
+  const fields = readStop(req.body, null);
+  if ('error' in fields) return res.status(400).json({ error: fields.error });
+  if (!fields.meet_date) return res.status(400).json({ error: 'Set the meeting day' });
+  let userId = req.user!.id;
+  if (!ownScope(req.user!.role) && req.body?.user_id) {
+    const person = db.prepare("SELECT id FROM users WHERE id=? AND role!='agent'").get(String(req.body.user_id)) as { id: string } | undefined;
+    if (!person) return res.status(400).json({ error: 'Choose who is meeting them' });
+    userId = person.id;
+  }
+  const same = db.prepare(`SELECT id FROM travel_stops WHERE plan_id IS NULL AND agent_id=? AND user_id=? AND meet_date=?`).get(agent.id, userId, fields.meet_date);
+  if (same) return res.status(400).json({ error: 'This meeting day is already set for this agent' });
+  const city = clean(req.body?.city, 80);
+  const id = uuidv4();
+  const now = new Date().toISOString();
+  db.prepare(`INSERT INTO travel_stops (
+    id,plan_id,user_id,agent_id,agent_name,agency_name,phone,city,stage,meet_date,meet_time,call_note,outcome_note,created_at,updated_at
+  ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+    id, null, userId, agent.id, agent.name, agent.agency_name || '', agent.phone || '',
+    city, fields.stage, fields.meet_date, fields.meet_time, fields.call_note, fields.outcome_note, now, now,
+  );
+  const stop = db.prepare('SELECT * FROM travel_stops WHERE id=?').get(id);
+  recordProgress(stop, { city, start_date: fields.meet_date }, userId);
+  return res.status(201).json(db.prepare('SELECT * FROM travel_stops WHERE id=?').get(id));
+});
+
+router.put('/meetings/:id', (req: AuthRequest, res: Response) => {
+  const stop = db.prepare('SELECT * FROM travel_stops WHERE id=? AND plan_id IS NULL').get(req.params.id) as any;
+  if (!stop) return res.status(404).json({ error: 'Meeting not found' });
+  if (!canSee(req, stop.user_id)) return res.status(403).json({ error: 'You can only edit your own meeting' });
+  const fields = readStop(req.body, null, stop);
+  if ('error' in fields) return res.status(400).json({ error: fields.error });
+  if (!fields.meet_date) return res.status(400).json({ error: 'Set the meeting day' });
+  db.prepare(`UPDATE travel_stops SET stage=?, meet_date=?, meet_time=?, call_note=?, outcome_note=?, updated_at=? WHERE id=?`)
+    .run(fields.stage, fields.meet_date, fields.meet_time, fields.call_note, fields.outcome_note, new Date().toISOString(), stop.id);
+  recordProgress(db.prepare('SELECT * FROM travel_stops WHERE id=?').get(stop.id), { city: stop.city, start_date: fields.meet_date }, stop.user_id);
+  return res.json(db.prepare('SELECT * FROM travel_stops WHERE id=?').get(stop.id));
+});
+
+router.delete('/meetings/:id', (req: AuthRequest, res: Response) => {
+  const stop = db.prepare('SELECT * FROM travel_stops WHERE id=? AND plan_id IS NULL').get(req.params.id) as any;
+  if (!stop) return res.status(404).json({ error: 'Meeting not found' });
+  if (!canSee(req, stop.user_id)) return res.status(403).json({ error: 'You can only edit your own meeting' });
+  db.prepare('DELETE FROM travel_stops WHERE id=?').run(stop.id);
+  return res.json({ ok: true });
 });
 
 router.get('/', (req: AuthRequest, res: Response) => {
@@ -156,7 +220,8 @@ function readStop(body: any, plan: any, current?: any) {
   const stage = (STAGES as readonly string[]).includes(body?.stage) ? body.stage : (current?.stage || 'planned');
   const meetDate = body?.meet_date === '' ? '' : (body?.meet_date || current?.meet_date || '');
   const meetTime = body?.meet_time === '' ? '' : clean(body?.meet_time ?? current?.meet_time, 5);
-  if (meetDate && (!DAY.test(meetDate) || meetDate < plan.start_date || meetDate > plan.end_date)) {
+  if (meetDate && !DAY.test(meetDate)) return { error: 'Set the meeting day' };
+  if (meetDate && plan?.start_date && (meetDate < plan.start_date || meetDate > plan.end_date)) {
     return { error: `The meeting day has to be between ${plan.start_date} and ${plan.end_date}` };
   }
   if (meetTime && !TIME.test(meetTime)) return { error: 'Enter the time as 11:00' };
@@ -241,6 +306,53 @@ router.delete('/:id/stops/:stopId', (req: AuthRequest, res: Response) => {
   db.prepare('DELETE FROM travel_stops WHERE id=? AND plan_id=?').run(req.params.stopId, plan.id);
   return res.json({ ok: true });
 });
+
+export function allowMeetingsWithoutTrip() {
+  const cols = db.prepare('PRAGMA table_info(travel_stops)').all() as { name: string; notnull: number }[];
+  if (!cols.length) return;
+  if (!cols.some(col => col.name === 'user_id')) db.exec('ALTER TABLE travel_stops ADD COLUMN user_id TEXT');
+  if (!cols.some(col => col.name === 'city')) db.exec('ALTER TABLE travel_stops ADD COLUMN city TEXT');
+  db.exec(`UPDATE travel_stops SET user_id = (SELECT user_id FROM travel_plans WHERE travel_plans.id = travel_stops.plan_id) WHERE user_id IS NULL AND plan_id IS NOT NULL`);
+  db.exec(`UPDATE travel_stops SET city = (SELECT city FROM travel_plans WHERE travel_plans.id = travel_stops.plan_id) WHERE (city IS NULL OR city = '') AND plan_id IS NOT NULL`);
+  const planCol = (db.prepare('PRAGMA table_info(travel_stops)').all() as { name: string; notnull: number }[]).find(col => col.name === 'plan_id');
+  if (!planCol?.notnull) return;
+  db.pragma('foreign_keys = OFF');
+  try {
+  db.exec(`
+    CREATE TABLE travel_stops_loose (
+      id TEXT PRIMARY KEY,
+      plan_id TEXT,
+      user_id TEXT,
+      agent_id TEXT,
+      agent_name TEXT NOT NULL,
+      agency_name TEXT NOT NULL DEFAULT '',
+      phone TEXT NOT NULL DEFAULT '',
+      city TEXT NOT NULL DEFAULT '',
+      stage TEXT NOT NULL DEFAULT 'planned',
+      meet_date TEXT,
+      meet_time TEXT NOT NULL DEFAULT '',
+      call_note TEXT NOT NULL DEFAULT '',
+      outcome_note TEXT NOT NULL DEFAULT '',
+      call_activity_id TEXT,
+      meeting_activity_id TEXT,
+      meeting_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    INSERT INTO travel_stops_loose (
+      id, plan_id, user_id, agent_id, agent_name, agency_name, phone, city, stage, meet_date, meet_time,
+      call_note, outcome_note, call_activity_id, meeting_activity_id, meeting_id, created_at, updated_at
+    )
+    SELECT id, plan_id, user_id, agent_id, agent_name, agency_name, phone, COALESCE(city, ''), stage, meet_date, meet_time,
+      call_note, outcome_note, call_activity_id, meeting_activity_id, meeting_id, created_at, updated_at
+    FROM travel_stops;
+    DROP TABLE travel_stops;
+    ALTER TABLE travel_stops_loose RENAME TO travel_stops;
+  `);
+  } finally {
+    db.pragma('foreign_keys = ON');
+  }
+}
 
 export function ensureSampleTrip() {
   const user = db.prepare("SELECT id FROM users WHERE email='krishan@hotel.com'").get() as { id: string } | undefined;

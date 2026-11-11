@@ -28,11 +28,12 @@ import phoneRoutes from './routes/phone';
 import liveRoutes from './routes/live';
 import pushRoutes from './routes/push';
 import deviceRoutes from './routes/devices';
-import travelRoutes, { ensureSampleTrip } from './routes/travel';
+import travelRoutes, { allowMeetingsWithoutTrip, ensureSampleTrip } from './routes/travel';
 import agentPortalRoutes from './routes/agentPortal';
 import { initPush } from './push';
 
 initDb();
+allowMeetingsWithoutTrip();
 ensureSampleTrip();
 initPush();
 setInterval(sweepMissedCalls, 15000);

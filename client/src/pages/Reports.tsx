@@ -16,7 +16,7 @@ export default function Reports() {
   const [hotelId, setHotelId] = useState('');
   const [hotels, setHotels] = useState<{ id: string; name: string; city?: string; open_leads: number; pipeline: number; closed_count: number; closed_revenue: number; calls: number; proposals: number }[]>([]);
   const [hotelChoices, setHotelChoices] = useState<{ id: string; name: string }[]>([]);
-  const [travel, setTravel] = useState<{ summary: { trips: number; planned: number; to_schedule: number; confirmed: number; met: number; missed: number }; people: { person: string; planned: number; to_schedule: number; confirmed: number; met: number; missed: number }[]; rows: { person: string; city: string; start_date: string; end_date: string; agent_name: string; agency_name: string; stage: string; meet_date: string | null; meet_time: string }[] }>({ summary: { trips: 0, planned: 0, to_schedule: 0, confirmed: 0, met: 0, missed: 0 }, people: [], rows: [] });
+  const [travel, setTravel] = useState<{ summary: { trips: number; planned: number; to_schedule: number; confirmed: number; met: number; missed: number }; people: { person: string; planned: number; to_schedule: number; confirmed: number; met: number; missed: number }[]; rows: { person: string; city: string; start_date: string; end_date: string; agent_name: string; agency_name: string; stage: string; meet_date: string | null; meet_time: string; on_trip?: number }[] }>({ summary: { trips: 0, planned: 0, to_schedule: 0, confirmed: 0, met: 0, missed: 0 }, people: [], rows: [] });
 
   const loadAll = async () => {
     const q = new URLSearchParams();
@@ -215,7 +215,7 @@ export default function Reports() {
               <tr key={`${row.person}-${row.agent_name}-${index}`} className="table-row">
                 <td className="py-3 pr-4">{row.person}</td>
                 <td className="py-3 pr-4">{row.city}</td>
-                <td className="py-3 pr-4">{row.start_date} to {row.end_date}</td>
+                <td className="py-3 pr-4">{row.on_trip ? `${row.start_date} to ${row.end_date}` : 'No trip'}</td>
                 <td className="py-3 pr-4">{row.agent_name}{row.agency_name ? <span className="block text-xs text-gray-400">{row.agency_name}</span> : null}</td>
                 <td className="py-3 pr-4">{row.meet_date ? `${row.meet_date}${row.meet_time ? ` ${row.meet_time}` : ''}` : 'Time not fixed'}</td>
                 <td className="py-3 pr-4">{({ planned: 'Meeting planned', to_schedule: 'To be scheduled', confirmed: 'Confirmed', met: 'Met', missed: 'Missed' } as Record<string, string>)[row.stage] || row.stage}</td>

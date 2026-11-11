@@ -22,6 +22,7 @@ interface Stop {
   agent_name: string;
   agency_name: string;
   phone: string;
+  city?: string;
   stage: string;
   meet_date: string | null;
   meet_time: string;
@@ -53,6 +54,7 @@ function stageLabel(id: string) {
 export default function Travel() {
   const { isManager } = useAuthStore();
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [loose, setLoose] = useState<Stop[]>([]);
   const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
   const [query, setQuery] = useState('');
   const [staff, setStaff] = useState('');
@@ -81,6 +83,7 @@ export default function Travel() {
     if (staff) params.set('user_id', staff);
     const qs = params.toString();
     api.get<Plan[]>(`/travel${qs ? `?${qs}` : ''}`).then(setPlans).catch((err: Error) => setError(err.message));
+    api.get<Stop[]>('/travel/meetings').then(setLoose).catch(() => {});
   };
 
   const loadPlan = (id: string) => {
@@ -259,8 +262,23 @@ export default function Travel() {
         )}
       </div>
 
+      {loose.length > 0 && (
+        <div className="space-y-2">
+          <h2 className="text-sm font-semibold text-stone-700">Meetings with no trip</h2>
+          {loose.map(stop => (
+            <div key={stop.id} className="card flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-medium text-stone-900 truncate">{stop.agent_name}</p>
+                <p className="text-xs text-stone-500">{[stop.city, stop.agency_name].filter(Boolean).join(' · ')}</p>
+              </div>
+              <p className="text-xs text-stone-600 shrink-0 text-right">{stop.meet_date ? `${dayLabel(stop.meet_date)}${stop.meet_time ? ` · ${stop.meet_time}` : ''}` : 'Day not set'}<span className="block">{stageLabel(stop.stage)}</span></p>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="space-y-2">
-        {plans.length === 0 && <p className="text-sm text-stone-500">No travel plan yet.</p>}
+        {plans.length === 0 && <p className="text-sm text-stone-500">No travel plan yet. A meeting can still be set from Agent Network without a trip.</p>}
         {plans.map(item => (
           <button key={item.id} className="card w-full text-left" onClick={() => setOpenId(item.id)}>
             <p className="font-semibold text-stone-900">{item.city}</p>

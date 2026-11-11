@@ -125,23 +125,27 @@ router.get('/travel', (req: AuthRequest, res: Response) => {
   const dated = DAY.test(from) && DAY.test(to);
   const params: any[] = [];
   let where = 'WHERE 1=1';
-  if (ownScope(req.user!.role)) { where += ' AND p.user_id=?'; params.push(req.user!.id); }
-  if (dated) { where += ' AND p.end_date>=? AND p.start_date<=?'; params.push(from, to); }
+  if (ownScope(req.user!.role)) { where += ' AND COALESCE(p.user_id, s.user_id)=?'; params.push(req.user!.id); }
+  if (dated) {
+    where += ` AND ((s.plan_id IS NULL AND (s.meet_date IS NULL OR s.meet_date BETWEEN ? AND ?)) OR (s.plan_id IS NOT NULL AND p.end_date>=? AND p.start_date<=?))`;
+    params.push(from, to, from, to);
+  }
   const rows = db.prepare(`
-    SELECT u.name AS person, p.city, p.start_date, p.end_date,
-           s.agent_name, s.agency_name, s.stage, s.meet_date, s.meet_time
+    SELECT u.name AS person, COALESCE(p.city, s.city, '') AS city,
+           COALESCE(p.start_date, '') AS start_date, COALESCE(p.end_date, '') AS end_date,
+           s.agent_name, s.agency_name, s.stage, s.meet_date, s.meet_time,
+           CASE WHEN s.plan_id IS NULL THEN 0 ELSE 1 END AS on_trip
     FROM travel_stops s
-    JOIN travel_plans p ON p.id = s.plan_id
-    JOIN users u ON u.id = p.user_id
+    LEFT JOIN travel_plans p ON p.id = s.plan_id
+    JOIN users u ON u.id = COALESCE(p.user_id, s.user_id)
     ${where}
-    ORDER BY p.start_date, u.name, s.meet_date, s.agent_name
+    ORDER BY COALESCE(s.meet_date, p.start_date), u.name, s.agent_name
   `).all(...params) as any[];
   const people = new Map<string, { person: string; planned: number; to_schedule: number; confirmed: number; met: number; missed: number }>();
   const summary = { trips: 0, planned: 0, to_schedule: 0, confirmed: 0, met: 0, missed: 0 };
   const tripKeys = new Set<string>();
   for (const row of rows) {
-    const key = `${row.person}|${row.city}|${row.start_date}`;
-    tripKeys.add(key);
+    if (row.on_trip) tripKeys.add(`${row.person}|${row.city}|${row.start_date}`);
     const bucket = people.get(row.person) || { person: row.person, planned: 0, to_schedule: 0, confirmed: 0, met: 0, missed: 0 };
     if (bucket[row.stage as keyof typeof bucket] !== undefined && row.stage !== 'person') {
       (bucket as any)[row.stage] += 1;

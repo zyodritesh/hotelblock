@@ -121,11 +121,13 @@ export function initDb() {
 
     CREATE TABLE IF NOT EXISTS travel_stops (
       id TEXT PRIMARY KEY,
-      plan_id TEXT NOT NULL,
+      plan_id TEXT,
+      user_id TEXT,
       agent_id TEXT,
       agent_name TEXT NOT NULL,
       agency_name TEXT NOT NULL DEFAULT '',
       phone TEXT NOT NULL DEFAULT '',
+      city TEXT NOT NULL DEFAULT '',
       stage TEXT NOT NULL DEFAULT 'planned',
       meet_date TEXT,
       meet_time TEXT NOT NULL DEFAULT '',
