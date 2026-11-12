@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { roleLabel } from '../lib/utils';
@@ -61,17 +61,23 @@ export default function Phone() {
   const [logStatus, setLogStatus] = useState('');
   const [teamQ, setTeamQ] = useState('');
   const [q, setQ] = useState('');
+  const queryRef = useRef('');
   const phase = useSyncExternalStore(subscribe, () => getSnapshot().phase, () => getSnapshot().phase);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [install, setInstall] = useState<any>(null);
 
-  const load = (query = q) => {
+  const load = (query = queryRef.current) => {
+    queryRef.current = query;
     const params = query ? `?q=${encodeURIComponent(query)}` : '';
     api.get<Book>(`/phone${params}`).then(setBook).catch(() => {});
   };
 
-  useEffect(() => { load(''); }, []);
+  useEffect(() => {
+    load('');
+    const timer = setInterval(() => load(queryRef.current), 8000);
+    return () => clearInterval(timer);
+  }, []);
   useEffect(() => {
     const params = new URLSearchParams();
     if (logQ.trim()) params.set('q', logQ.trim());

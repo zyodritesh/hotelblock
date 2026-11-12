@@ -23,7 +23,11 @@ function urlBase64ToUint8Array(base64: string) {
 }
 
 async function listen(token: string, onEvent: (event: string, data: any) => void, signal: AbortSignal) {
-  const res = await fetch('/api/live/stream', { headers: { Authorization: `Bearer ${token}` }, signal });
+  const res = await fetch('/api/live/stream', {
+    headers: { Authorization: `Bearer ${token}`, Accept: 'text/event-stream' },
+    cache: 'no-store',
+    signal,
+  });
   if (!res.ok || !res.body) throw new Error('stream');
   const reader = res.body.getReader();
   const decoder = new TextDecoder();

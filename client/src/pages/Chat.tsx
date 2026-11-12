@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import Modal from '../components/Modal';
 import { roleLabel } from '../lib/utils';
 import { useAuthStore } from '../store/auth';
-import { patch } from '../live/store';
+import { getSnapshot, patch, subscribe as subscribeLive } from '../live/store';
 import { startGroupCall, startOutgoing } from '../live/session';
 
 interface Member { id: string; name: string; role: string; online?: boolean; }
@@ -39,6 +39,7 @@ export default function Chat() {
   const { userId, conversationId } = useParams();
   const navigate = useNavigate();
   const me = useAuthStore(s => s.user);
+  const onlineIds = useSyncExternalStore(subscribeLive, () => getSnapshot().online, () => getSnapshot().online);
   const [threads, setThreads] = useState<Thread[]>([]);
   const [people, setPeople] = useState<Member[]>([]);
   const [conversation, setConversation] = useState<Conversation | null>(null);
@@ -74,8 +75,11 @@ export default function Chat() {
     setPeople(r.people || []);
     setMessages(prev => {
       const next = r.messages;
-      if (prev.length === next.length && prev.every((item, index) => item.id === next[index].id && item.body === next[index].body && item.edited_at === next[index].edited_at && item.deleted_at === next[index].deleted_at && item.attachments.length === next[index].attachments.length)) return prev;
-      return next;
+      const ids = new Set(next.map(item => item.id));
+      const pending = prev.filter(item => !ids.has(item.id) && Date.now() - new Date(item.created_at).getTime() < 15000);
+      const merged = pending.length ? [...next, ...pending] : next;
+      if (prev.length === merged.length && prev.every((item, index) => item.id === merged[index].id && item.body === merged[index].body && item.edited_at === merged[index].edited_at && item.deleted_at === merged[index].deleted_at && item.attachments.length === merged[index].attachments.length)) return prev;
+      return merged;
     });
     patch({ unreadChat: r.unread });
   };
@@ -87,7 +91,11 @@ export default function Chat() {
     request?.then(applyThread).catch((err: any) => setError(err.message));
   };
 
-  useEffect(() => { loadThreads(); }, [userId, conversationId]);
+  useEffect(() => {
+    loadThreads();
+    const timer = setInterval(loadThreads, 4000);
+    return () => clearInterval(timer);
+  }, [userId, conversationId]);
   useEffect(() => {
     setConversation(null);
     setMessages([]);
@@ -267,7 +275,7 @@ export default function Chat() {
             <button key={thread.id} type="button" className="w-full px-4 py-3 flex items-center gap-3 text-left border-b border-gray-100 hover:bg-gray-50" onClick={() => navigate(thread.path)}>
               <div className="relative w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center font-semibold shrink-0">
                 {thread.is_group ? thread.members.length : (thread.title[0] || '?')}
-                {thread.online && <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />}
+                {(thread.online || thread.members.some(member => member.id !== me?.id && onlineIds.includes(member.id))) && <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-baseline justify-between gap-2">
@@ -301,9 +309,10 @@ export default function Chat() {
   }
 
   const other = conversation?.members.find(member => member.id !== me?.id);
+  const otherOnline = !!other && (other.online || onlineIds.includes(other.id));
   const subtitle = conversation?.is_group
     ? conversation.members.map(member => member.name).join(', ')
-    : other ? roleLabel(other.role) : '';
+    : other ? `${roleLabel(other.role)}${otherOnline ? ' · online' : ''}` : '';
 
   return (
     <div className="h-full flex flex-col bg-slate-100 max-w-lg mx-auto lg:max-w-none lg:rounded-2xl lg:overflow-hidden lg:border lg:border-gray-200">

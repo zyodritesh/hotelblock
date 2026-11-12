@@ -11,13 +11,16 @@ router.get('/online', (_req: AuthRequest, res: Response) => {
 });
 
 router.get('/stream', (req: AuthRequest, res: Response) => {
-  res.setHeader('Content-Type', 'text/event-stream');
+  req.socket.setTimeout(0);
+  req.socket.setNoDelay(true);
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders();
 
   const send = (event: string, data: unknown) => {
+    if (res.writableEnded) return;
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   };
   const me = req.user!.id;
@@ -45,7 +48,15 @@ router.get('/stream', (req: AuthRequest, res: Response) => {
     });
   }
   const unsubscribe = subscribe(me, send);
-  const ping = setInterval(() => { res.write(': ping\n\n'); }, 20000);
+  const ping = setInterval(() => {
+    try {
+      if (res.writableEnded) return;
+      res.write(': ping\n\n');
+    } catch {
+      clearInterval(ping);
+      unsubscribe();
+    }
+  }, 10000);
   req.on('close', () => {
     clearInterval(ping);
     unsubscribe();

@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { touch } from '../live';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'hotelblock_secret_2024';
 
@@ -16,6 +17,7 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
     const token = header.slice(7);
     const payload = jwt.verify(token, JWT_SECRET) as { id: string; email: string; role: string; name: string };
     req.user = payload;
+    if (payload.role !== 'agent') touch(payload.id);
     const url = req.originalUrl || '';
     const agentAllowed = url.startsWith('/api/auth') || url.startsWith('/api/agent-portal') || url.startsWith('/api/push') || url.startsWith('/api/devices');
     if (payload.role === 'agent' && !agentAllowed) {
