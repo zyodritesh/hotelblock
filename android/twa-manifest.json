@@ -20,8 +20,8 @@
     "path": "./hotelblock.keystore",
     "alias": "hotelblock"
   },
-  "appVersionName": "1.0.8",
-  "appVersionCode": 9,
+  "appVersionName": "1.0.9",
+  "appVersionCode": 10,
   "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
   "webManifestUrl": "https://sig-pieces-jaguar-widespread.trycloudflare.com/manifest.webmanifest",
@@ -40,5 +40,5 @@
   "additionalTrustedOrigins": [],
   "retainedBundles": [],
   "displayOverride": [],
-  "appVersion": "1.0.8"
+  "appVersion": "1.0.9"
 }

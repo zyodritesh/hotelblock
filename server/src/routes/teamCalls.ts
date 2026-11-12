@@ -219,14 +219,25 @@ router.post('/:id/signal', (req: AuthRequest, res: Response) => {
   if (!party(call, req.user!.id)) return res.status(403).json({ error: 'Forbidden' });
   if (!['ringing', 'accepted'].includes(call.status)) return res.status(400).json({ error: 'Call has ended' });
   if (call.is_group) return signalGroup(call, req, res);
-  if (req.body.kind !== 'ice' || !req.body.candidate) return res.status(400).json({ error: 'Missing candidate' });
+  const kind = String(req.body.kind || '');
   const now = new Date().toISOString();
-  db.prepare('INSERT INTO team_call_signals (id, call_id, from_user_id, kind, payload, created_at) VALUES (?,?,?,?,?,?)').run(
-    uuidv4(), call.id, req.user!.id, 'ice', JSON.stringify(req.body.candidate), now,
-  );
   const other = req.user!.id === call.from_user_id ? call.to_user_id : call.from_user_id;
-  publish(other, 'call', { action: 'signal', callId: call.id, signal: { kind: 'ice', candidate: req.body.candidate } });
-  return res.json({ ok: true });
+  if (kind === 'ice' && req.body.candidate) {
+    db.prepare('INSERT INTO team_call_signals (id, call_id, from_user_id, kind, payload, created_at) VALUES (?,?,?,?,?,?)').run(
+      uuidv4(), call.id, req.user!.id, 'ice', JSON.stringify(req.body.candidate), now,
+    );
+    publish(other, 'call', { action: 'signal', callId: call.id, signal: { kind: 'ice', candidate: req.body.candidate } });
+    return res.json({ ok: true });
+  }
+  const sdp = String(req.body.sdp || '');
+  if ((kind === 'offer' || kind === 'answer') && sdp && sdp.length < 200000) {
+    db.prepare('INSERT INTO team_call_signals (id, call_id, from_user_id, kind, payload, created_at) VALUES (?,?,?,?,?,?)').run(
+      uuidv4(), call.id, req.user!.id, kind, JSON.stringify(sdp), now,
+    );
+    publish(other, 'call', { action: 'signal', callId: call.id, signal: { kind, sdp } });
+    return res.json({ ok: true });
+  }
+  return res.status(400).json({ error: 'Missing candidate' });
 });
 
 router.get('/:id/signals', (req: AuthRequest, res: Response) => {

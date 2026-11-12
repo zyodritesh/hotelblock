@@ -91,10 +91,10 @@ function sendDownload(res: express.Response, file: string, name: string, type: s
 }
 
 app.get('/hotelblock.apk', (_req, res) => {
-  sendDownload(res, path.join(androidDir, 'app-release-signed.apk'), 'HotelBlock-1.0.8.apk', 'application/octet-stream');
+  sendDownload(res, path.join(androidDir, 'app-release-signed.apk'), 'HotelBlock-1.0.9.apk', 'application/octet-stream');
 });
 app.get('/HotelBlock.zip', (_req, res) => {
-  sendDownload(res, path.join(androidDir, 'HotelBlock.zip'), 'HotelBlock-1.0.8.zip', 'application/zip');
+  sendDownload(res, path.join(androidDir, 'HotelBlock.zip'), 'HotelBlock-1.0.9.zip', 'application/zip');
 });
 app.get('/get-app', (_req, res) => {
   res.type('html').send(`<!doctype html>
@@ -107,9 +107,9 @@ app.get('/get-app', (_req, res) => {
 <body style="margin:0;font-family:sans-serif;background:#0f172a;color:#fff">
   <main style="max-width:420px;margin:0 auto;padding:28px 20px">
     <h1 style="font-size:28px;margin:0 0 8px">HotelBlock</h1>
-    <p style="color:#cbd5e1;line-height:1.5">Version 1.0.8. Purani HotelBlock ke upar install kar sakte ho. ZIP download karo, andar HotelBlock-1.0.8.apk install karo. Microphone aur notifications par Allow dabao. Team call par Speaker on aur Speaker off hai, aur incoming call phone ki ringtone bajati hai.</p>
-    <a href="/HotelBlock.zip" style="display:block;margin:18px 0;background:#2563eb;color:#fff;text-align:center;text-decoration:none;font-weight:700;padding:16px;border-radius:14px">Download ZIP 1.0.8</a>
-    <a href="/hotelblock.apk" style="display:block;margin:0 0 18px;background:#1e293b;color:#fff;text-align:center;text-decoration:none;font-weight:700;padding:16px;border-radius:14px">Download APK 1.0.8</a>
+    <p style="color:#cbd5e1;line-height:1.5">Version 1.0.9. Purani HotelBlock ke upar install kar sakte ho. ZIP download karo, andar HotelBlock-1.0.9.apk install karo. Microphone aur notifications par Allow dabao. Team call par Speaker on aur Speaker off hai, incoming call phone ki ringtone bajati hai, aur slow network par call reconnect karti hai. Chat ka send box keyboard ke upar rehta hai.</p>
+    <a href="/HotelBlock.zip" style="display:block;margin:18px 0;background:#2563eb;color:#fff;text-align:center;text-decoration:none;font-weight:700;padding:16px;border-radius:14px">Download ZIP 1.0.9</a>
+    <a href="/hotelblock.apk" style="display:block;margin:0 0 18px;background:#1e293b;color:#fff;text-align:center;text-decoration:none;font-weight:700;padding:16px;border-radius:14px">Download APK 1.0.9</a>
     <p style="color:#94a3b8;font-size:14px;line-height:1.5">Customer call phone app kholti hai. Team call app ke andar connect hoti hai, timer tab chalta hai, aur call log mein save hoti hai.</p>
   </main>
 </body>

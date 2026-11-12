@@ -72,7 +72,7 @@ export default function CallOverlay() {
             {live.peerName?.[0]?.toUpperCase() || '?'}
           </div>
           <h2 className="mt-4 text-2xl font-semibold text-center">{live.peerName || 'Teammate'}</h2>
-          <p className="mt-1 text-slate-400">{live.phase === 'live' ? clock : live.phase === 'connecting' ? 'Connecting audio' : 'Ringing'}</p>
+          <p className="mt-1 text-slate-400">{live.link === 'weak' ? 'Reconnecting…' : live.phase === 'live' ? clock : live.phase === 'connecting' ? 'Connecting audio' : 'Ringing'}</p>
           <div className="mt-10 flex items-end justify-center gap-8">
             {live.phase === 'incoming' && (
               <>

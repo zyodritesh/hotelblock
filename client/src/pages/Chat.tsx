@@ -58,6 +58,8 @@ export default function Chat() {
   const [menuId, setMenuId] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const photoRef = useRef<HTMLInputElement>(null);
+  const [keyboard, setKeyboard] = useState(0);
   const typedAt = useRef(0);
   const listed = useRef(false);
   const activeId = conversation?.id || '';
@@ -114,6 +116,27 @@ export default function Chat() {
     if (userId || conversationId) loadThread();
   }, [userId, conversationId]);
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [messages]);
+  useEffect(() => {
+    const box = inputRef.current;
+    if (!box) return;
+    box.style.height = 'auto';
+    box.style.height = `${Math.min(box.scrollHeight, 128)}px`;
+  }, [text, conversationId, userId]);
+  useEffect(() => {
+    const view = window.visualViewport;
+    if (!view) return;
+    const sync = () => {
+      const covered = Math.max(0, window.innerHeight - view.height - view.offsetTop);
+      setKeyboard(covered > 80 ? Math.round(covered) : 0);
+    };
+    view.addEventListener('resize', sync);
+    view.addEventListener('scroll', sync);
+    sync();
+    return () => {
+      view.removeEventListener('resize', sync);
+      view.removeEventListener('scroll', sync);
+    };
+  }, []);
   useEffect(() => {
     const timer = setInterval(() => {
       setTyping(prev => {
@@ -324,7 +347,7 @@ export default function Chat() {
     : other ? `${roleLabel(other.role)}${otherOnline ? ' · online' : ''}` : '';
 
   return (
-    <div className="h-full flex flex-col bg-slate-100 max-w-lg mx-auto lg:max-w-none lg:rounded-2xl lg:overflow-hidden lg:border lg:border-gray-200">
+    <div className="h-full flex flex-col bg-slate-100 max-w-lg mx-auto lg:max-w-none lg:rounded-2xl lg:overflow-hidden lg:border lg:border-gray-200" style={{ paddingBottom: keyboard }}>
       <div className="shrink-0 bg-white border-b border-gray-200 px-3 py-2 flex items-center gap-2" style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top))' }}>
         <Link to="/chat" className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-gray-700 text-xl" aria-label="Back to messages">←</Link>
         <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-semibold shrink-0">
@@ -398,21 +421,19 @@ export default function Chat() {
           ))}
         </div>
       )}
-      {editing && <p className="px-3 pb-1 text-xs text-blue-700">Editing a message. <button type="button" className="underline" onClick={() => { setEditing(null); setText(''); }}>Cancel</button></p>}
-      <form onSubmit={send} className="shrink-0 bg-white border-t border-gray-200 px-3 py-2 flex items-end gap-2" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
-        <label className="shrink-0 h-11 px-3 rounded-full bg-gray-100 text-sm font-medium text-gray-700 flex items-center cursor-pointer">
-          Photo
-          <input type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple className="hidden" onChange={e => { setPhotos(list => [...list, ...Array.from(e.target.files || [])].slice(0, 8)); e.target.value = ''; }} />
-        </label>
-        <button type="button" className="shrink-0 h-11 w-11 rounded-full bg-gray-100 text-lg" onClick={() => setEmojiOpen(open => !open)} aria-label="Emoji">☺</button>
-        <textarea ref={inputRef} rows={1} className="input flex-1 min-w-0 resize-none max-h-28" placeholder="Message. @ adds a person" value={text} onChange={e => onType(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} />
-        <button className="shrink-0 h-11 px-4 rounded-full bg-blue-600 text-white text-sm font-semibold disabled:opacity-40" disabled={sending || (!text.trim() && !photos.length)}>{editing ? 'Save' : 'Send'}</button>
-      </form>
+      {editing && <p className="px-3 pb-1 text-xs text-blue-700 bg-white">Editing a message. <button type="button" className="underline" onClick={() => { setEditing(null); setText(''); }}>Cancel</button></p>}
       {emojiOpen && (
         <div className="grid grid-cols-8 gap-1 bg-white border-t border-gray-200 p-2">
           {EMOJI.map(emoji => <button key={emoji} type="button" className="h-10 text-xl" onClick={() => insertEmoji(emoji)}>{emoji}</button>)}
         </div>
       )}
+      <form onSubmit={send} className="shrink-0 bg-white border-t border-gray-200 px-2 py-2 flex items-end gap-1.5" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
+        <button type="button" className="shrink-0 h-11 w-11 rounded-full bg-gray-100 text-lg" aria-label="Photo" onClick={() => photoRef.current?.click()}>＋</button>
+        <input ref={photoRef} type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple className="hidden" onChange={e => { setPhotos(list => [...list, ...Array.from(e.target.files || [])].slice(0, 8)); e.target.value = ''; }} />
+        <button type="button" className="shrink-0 h-11 w-11 rounded-full bg-gray-100 text-lg" onClick={() => setEmojiOpen(open => !open)} aria-label="Emoji">☺</button>
+        <textarea ref={inputRef} rows={1} className="min-w-0 flex-1 resize-none max-h-32 rounded-2xl border border-gray-300 px-3 py-2.5 text-base leading-5 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Message" value={text} onChange={e => onType(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} />
+        <button className="shrink-0 h-11 min-w-11 px-3 rounded-full bg-blue-600 text-white text-sm font-semibold disabled:opacity-40" disabled={sending || (!text.trim() && !photos.length)}>{editing ? 'Save' : 'Send'}</button>
+      </form>
     </div>
   );
 }
