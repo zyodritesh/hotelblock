@@ -139,7 +139,10 @@ router.get('/unread', (req: AuthRequest, res: Response) => {
 router.get('/threads', (req: AuthRequest, res: Response) => {
   const me = req.user!.id;
   const rows = db.prepare(`SELECT c.* FROM conversations c JOIN conversation_members m ON m.conversation_id=c.id AND m.user_id=?`).all(me) as any[];
-  const threads = rows.map(row => ({ ...presentConversation(row, me), path: `/chat/c/${row.id}` }));
+  const threads = rows.flatMap(row => {
+    try { return [{ ...presentConversation(row, me), path: `/chat/c/${row.id}` }]; }
+    catch (err) { console.error(err); return []; }
+  });
   const directUserIds = new Set(threads.filter(t => !t.is_group).flatMap(t => t.members.map(m => m.id)));
   const people = db.prepare("SELECT id, name, role FROM users WHERE active=1 AND role != 'agent' AND id!=? ORDER BY name").all(me) as { id: string; name: string; role: string }[];
   for (const personRow of people) {
@@ -252,18 +255,31 @@ function saveMessage(conversationId: string, actor: { id: string; name: string }
   const message = presentMessage({ id, from_user_id: actor.id, from_name: actor.name, conversation_id: conversationId, body, attachments: JSON.stringify(attachments), kind: 'user', created_at: now, edited_at: null, deleted_at: null });
   fanout(conversationId, { action: 'message', message });
   const preview = body || (attachments.length ? `Sent ${attachments.length} photo${attachments.length > 1 ? 's' : ''}` : '');
-  notifyMembers(conversationId, actor, preview);
+  try { notifyMembers(conversationId, actor, preview); } catch (err) { console.error(err); }
   return { message };
 }
 
+function replyMessage(res: Response, conversationId: string, actor: { id: string; name: string }, body: string, files: Express.Multer.File[]) {
+  try {
+    const attachments = files.map(file => `/uploads/chat/${file.filename}`);
+    const saved = saveMessage(conversationId, actor, body, attachments);
+    if ('error' in saved) return res.status(400).json({ error: saved.error });
+    return res.status(201).json(saved.message);
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'The message could not be sent. Try again.' });
+  }
+}
+
 router.post('/conversations/:id/messages', (req: AuthRequest, res: Response) => {
+  const actor = { id: req.user!.id, name: req.user!.name };
+  if (String(req.headers['content-type'] || '').includes('application/json')) {
+    return replyMessage(res, req.params.id, actor, String(req.body?.body || '').trim(), []);
+  }
   upload.array('photos', 8)(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.message || 'Could not add those photos' });
     const files = (req.files as Express.Multer.File[] | undefined) || [];
-    const attachments = files.map(file => `/uploads/chat/${file.filename}`);
-    const saved = saveMessage(req.params.id, req.user!, String(req.body.body || '').trim(), attachments);
-    if ('error' in saved) return res.status(400).json({ error: saved.error });
-    return res.status(201).json(saved.message);
+    return replyMessage(res, req.params.id, actor, String(req.body?.body || '').trim(), files);
   });
 });
 

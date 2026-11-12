@@ -12,7 +12,11 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
     headers['Content-Type'] = 'application/json';
   }
 
-  const res = await fetch(`${BASE}${path}`, { ...options, headers });
+  let res = await fetch(`${BASE}${path}`, { ...options, headers });
+  if (res.status >= 500 && (!options.method || options.method === 'GET')) {
+    await new Promise(resolve => setTimeout(resolve, 500));
+    res = await fetch(`${BASE}${path}`, { ...options, headers });
+  }
   if (res.status === 401) {
     useAuthStore.getState().logout();
     window.location.href = '/login';

@@ -1,6 +1,6 @@
 {
   "packageId": "com.aayor.hotelblock",
-  "host": "keyword-blake-fire-cia.trycloudflare.com",
+  "host": "sig-pieces-jaguar-widespread.trycloudflare.com",
   "name": "HotelBlock",
   "launcherName": "HotelBlock",
   "display": "standalone",
@@ -13,18 +13,18 @@
   "backgroundColor": "#0F172A",
   "enableNotifications": true,
   "startUrl": "/",
-  "iconUrl": "https://keyword-blake-fire-cia.trycloudflare.com/icon-512.png",
-  "maskableIconUrl": "https://keyword-blake-fire-cia.trycloudflare.com/icon-512.png",
+  "iconUrl": "https://sig-pieces-jaguar-widespread.trycloudflare.com/icon-512.png",
+  "maskableIconUrl": "https://sig-pieces-jaguar-widespread.trycloudflare.com/icon-512.png",
   "splashScreenFadeOutDuration": 300,
   "signingKey": {
     "path": "./hotelblock.keystore",
     "alias": "hotelblock"
   },
-  "appVersionName": "1.0.7",
-  "appVersionCode": 8,
+  "appVersionName": "1.0.8",
+  "appVersionCode": 9,
   "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
-  "webManifestUrl": "https://keyword-blake-fire-cia.trycloudflare.com/manifest.webmanifest",
+  "webManifestUrl": "https://sig-pieces-jaguar-widespread.trycloudflare.com/manifest.webmanifest",
   "fallbackType": "webview",
   "features": {},
   "alphaDependencies": {
@@ -33,12 +33,12 @@
   "enableSiteSettingsShortcut": false,
   "isChromeOSOnly": false,
   "isMetaQuest": false,
-  "fullScopeUrl": "https://keyword-blake-fire-cia.trycloudflare.com/",
+  "fullScopeUrl": "https://sig-pieces-jaguar-widespread.trycloudflare.com/",
   "minSdkVersion": 24,
   "orientation": "default",
   "fingerprints": [],
   "additionalTrustedOrigins": [],
   "retainedBundles": [],
   "displayOverride": [],
-  "appVersion": "1.0.7"
+  "appVersion": "1.0.8"
 }

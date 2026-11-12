@@ -12,7 +12,10 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.media.AudioAttributes;
 import android.media.AudioManager;
+import android.media.Ringtone;
+import android.media.RingtoneManager;
 import android.webkit.JavascriptInterface;
 import org.json.JSONObject;
 import android.view.ViewGroup;
@@ -46,6 +49,7 @@ public class LauncherActivity extends Activity {
     private String pendingAccept;
     private ValueCallback<Uri[]> fileCallback;
     private PermissionRequest pendingWebPermission;
+    private Ringtone ringTone;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -308,13 +312,54 @@ public class LauncherActivity extends Activity {
                     setShowWhenLocked(open);
                     setTurnScreenOn(open);
                 }
-                AudioManager audio = (AudioManager) getSystemService(AUDIO_SERVICE);
-                if (audio != null) {
-                    audio.setMode(open ? AudioManager.MODE_IN_COMMUNICATION : AudioManager.MODE_NORMAL);
-                    audio.setSpeakerphoneOn(open);
-                }
+                if (!open) applyAudio("off");
             });
         }
+
+        @JavascriptInterface
+        public void callAudio(String mode) {
+            runOnUiThread(() -> applyAudio(mode == null ? "off" : mode));
+        }
+    }
+
+    private void applyAudio(String mode) {
+        AudioManager audio = (AudioManager) getSystemService(AUDIO_SERVICE);
+        if (audio == null) return;
+        if ("incoming".equals(mode)) {
+            audio.setMode(AudioManager.MODE_RINGTONE);
+            audio.setSpeakerphoneOn(true);
+            startRing();
+            return;
+        }
+        stopRing();
+        if ("ring".equals(mode) || "speaker".equals(mode)) {
+            audio.setMode("ring".equals(mode) ? AudioManager.MODE_RINGTONE : AudioManager.MODE_IN_COMMUNICATION);
+            audio.setSpeakerphoneOn(true);
+        } else if ("earpiece".equals(mode)) {
+            audio.setMode(AudioManager.MODE_IN_COMMUNICATION);
+            audio.setSpeakerphoneOn(false);
+        } else {
+            audio.setMode(AudioManager.MODE_NORMAL);
+            audio.setSpeakerphoneOn(false);
+        }
+    }
+
+    private void startRing() {
+        if (ringTone != null && ringTone.isPlaying()) return;
+        Uri uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+        if (uri == null) uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+        ringTone = RingtoneManager.getRingtone(getApplicationContext(), uri);
+        if (ringTone == null) return;
+        ringTone.setAudioAttributes(new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build());
+        if (Build.VERSION.SDK_INT >= 28) ringTone.setLooping(true);
+        ringTone.play();
+    }
+
+    private void stopRing() {
+        if (ringTone != null && ringTone.isPlaying()) ringTone.stop();
     }
 
     @Override
@@ -334,6 +379,7 @@ public class LauncherActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        stopRing();
         if (instance == this) instance = null;
         if (webView != null) webView.destroy();
         super.onDestroy();

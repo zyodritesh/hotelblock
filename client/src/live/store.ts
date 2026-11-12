@@ -14,6 +14,7 @@ export interface LiveSnapshot {
   callId: string;
   connectedAt: number;
   muted: boolean;
+  speaker: boolean;
   error: string;
   toast: Toast | null;
 }
@@ -27,6 +28,7 @@ let snapshot: LiveSnapshot = {
   callId: '',
   connectedAt: 0,
   muted: false,
+  speaker: true,
   error: '',
   toast: null,
 };

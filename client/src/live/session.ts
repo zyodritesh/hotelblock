@@ -46,6 +46,10 @@ function nativeCallScreen(open: boolean) {
   bridge?.callScreen?.(open);
 }
 
+export function setSpeaker(on: boolean) {
+  patch({ speaker: on });
+}
+
 function stopWatch() {
   if (watchTimer) window.clearInterval(watchTimer);
   watchTimer = 0;
@@ -102,6 +106,7 @@ function idle(error = '') {
     callId: '',
     connectedAt: 0,
     muted: false,
+    speaker: true,
     error,
     ...(error ? { toast: { title: 'Call', body: error } } : {}),
   });
@@ -225,7 +230,7 @@ async function tickCall() {
       const error = row.status === 'declined' ? 'Call declined' : row.status === 'missed' ? 'No answer' : '';
       const duration = talkSeconds();
       resetMedia();
-      patch({ phase: 'idle', peerName: '', peerId: '', callId: '', connectedAt: 0, muted: false, error, ...(error ? { toast: { title: 'Call', body: error } } : {}) });
+      patch({ phase: 'idle', peerName: '', peerId: '', callId: '', connectedAt: 0, muted: false, speaker: true, error, ...(error ? { toast: { title: 'Call', body: error } } : {}) });
       if (endedByOther) api.post(`/team-calls/${id}/end`, { duration_sec: duration }).catch(() => {});
       return;
     }
@@ -456,7 +461,7 @@ window.__hbDeclineCall = (id: string) => {
 
 export async function declineIncoming() {
   const id = getSnapshot().callId;
-  patch({ phase: 'idle', peerName: '', peerId: '', callId: '', connectedAt: 0, muted: false, error: '' });
+  patch({ phase: 'idle', peerName: '', peerId: '', callId: '', connectedAt: 0, muted: false, speaker: true, error: '' });
   resetMedia();
   if (id) await api.post(`/team-calls/${id}/decline`, {}).catch(() => {});
 }
@@ -464,7 +469,7 @@ export async function declineIncoming() {
 export async function hangUp() {
   const id = callId || getSnapshot().callId;
   const duration = talkSeconds();
-  patch({ phase: 'idle', peerName: '', peerId: '', callId: '', connectedAt: 0, muted: false, error: '' });
+  patch({ phase: 'idle', peerName: '', peerId: '', callId: '', connectedAt: 0, muted: false, speaker: true, error: '' });
   resetMedia();
   if (id) await api.post(`/team-calls/${id}/end`, { duration_sec: duration }).catch(() => {});
 }
@@ -522,6 +527,7 @@ export async function onCallEvent(data: any) {
       callId: '',
       connectedAt: 0,
       muted: false,
+      speaker: true,
       error,
       ...(error ? { toast: { title: 'Call', body: error } } : {}),
     });

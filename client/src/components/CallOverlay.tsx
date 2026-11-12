@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSyncExternalStore } from 'react';
 import { getSnapshot, subscribe } from '../live/store';
-import { acceptIncoming, bindRemoteAudio, declineIncoming, hangUp, toggleMute } from '../live/session';
+import { acceptIncoming, bindRemoteAudio, declineIncoming, hangUp, setSpeaker, toggleMute } from '../live/session';
 
 function useLive() {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
@@ -32,19 +32,30 @@ export default function CallOverlay() {
   }, [live.phase, live.connectedAt]);
 
   useEffect(() => {
-    if (live.phase !== 'incoming' && live.phase !== 'outgoing') return;
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    const oscillator = ctx.createOscillator();
-    const gain = ctx.createGain();
-    gain.gain.value = 0.04;
-    oscillator.frequency.value = live.phase === 'incoming' ? 480 : 420;
-    oscillator.connect(gain).connect(ctx.destination);
-    oscillator.start();
-    const pulse = setInterval(() => { gain.gain.value = gain.gain.value > 0 ? 0 : 0.04; }, 700);
-    return () => { clearInterval(pulse); oscillator.stop(); ctx.close().catch(() => {}); };
-  }, [live.phase]);
+    const native = (window as unknown as { HotelBlockNative?: { callAudio?: (mode: string) => void } }).HotelBlockNative;
+    let tone: HTMLAudioElement | null = null;
+    const stopTone = () => {
+      if (!tone) return;
+      tone.pause();
+      tone.src = '';
+      tone = null;
+    };
+    if (live.phase === 'incoming' || live.phase === 'outgoing') {
+      const mode = live.phase === 'incoming' ? 'incoming' : (live.speaker ? 'ring' : 'earpiece');
+      native?.callAudio?.(mode);
+      const phoneRingtone = live.phase === 'incoming' && typeof native?.callAudio === 'function';
+      if (!phoneRingtone) {
+        tone = new Audio(live.phase === 'incoming' ? '/ringtone.wav' : '/ringback.wav');
+        tone.loop = true;
+        tone.volume = 1;
+        tone.play().catch(() => {});
+      }
+      return stopTone;
+    }
+    stopTone();
+    if (live.phase === 'connecting' || live.phase === 'live') native?.callAudio?.(live.speaker ? 'speaker' : 'earpiece');
+    else native?.callAudio?.('off');
+  }, [live.phase, live.speaker]);
 
   const clock = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
   const open = live.phase !== 'idle';
@@ -78,10 +89,16 @@ export default function CallOverlay() {
             {live.phase !== 'incoming' && (
               <>
                 <button type="button" className="flex flex-col items-center gap-2" onClick={() => toggleMute()}>
-                  <span className={`w-16 h-16 rounded-full flex items-center justify-center text-sm font-semibold ${live.muted ? 'bg-white text-slate-900' : 'bg-slate-700 text-white'}`}>
-                    {live.muted ? 'Off' : 'Mic'}
+                  <span className={`w-16 h-16 rounded-full flex items-center justify-center text-xs font-semibold ${live.muted ? 'bg-white text-slate-900' : 'bg-slate-700 text-white'}`}>
+                    {live.muted ? 'Mic off' : 'Mic on'}
                   </span>
                   <span className="text-xs text-slate-300">{live.muted ? 'Unmute' : 'Mute'}</span>
+                </button>
+                <button type="button" className="flex flex-col items-center gap-2" onClick={() => setSpeaker(!live.speaker)}>
+                  <span className={`w-16 h-16 rounded-full flex items-center justify-center text-xs font-semibold text-center leading-tight px-1 ${live.speaker ? 'bg-white text-slate-900' : 'bg-slate-700 text-white'}`}>
+                    {live.speaker ? 'On' : 'Off'}
+                  </span>
+                  <span className="text-xs text-slate-300">{live.speaker ? 'Speaker on' : 'Speaker off'}</span>
                 </button>
                 <button type="button" className="flex flex-col items-center gap-2" onClick={() => hangUp()}>
                   <span className="w-16 h-16 rounded-full bg-red-600 flex items-center justify-center text-sm font-semibold">End</span>

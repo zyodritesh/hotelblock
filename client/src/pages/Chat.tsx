@@ -59,14 +59,20 @@ export default function Chat() {
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const typedAt = useRef(0);
+  const listed = useRef(false);
   const activeId = conversation?.id || '';
 
   const loadThreads = () => {
     api.get<{ threads: Thread[]; people: Member[]; unread: number }>('/chat/threads').then(r => {
+      listed.current = true;
+      setError('');
       setThreads(r.threads);
       setPeople(r.people || []);
       patch({ unreadChat: r.unread });
-    }).catch(() => {});
+    }).catch((err: any) => {
+      if (listed.current) return;
+      setError(err.message === 'Internal Server Error' ? 'Chat could not load. Open it again.' : err.message);
+    });
   };
 
   const applyThread = (r: { conversation: Conversation; messages: ChatMessage[]; people?: Member[]; unread: number }) => {
@@ -84,11 +90,14 @@ export default function Chat() {
     patch({ unreadChat: r.unread });
   };
 
-  const loadThread = () => {
+  const loadThread = (background = false) => {
     const request = conversationId
       ? api.get<any>(`/chat/conversations/${conversationId}`)
       : userId ? api.get<any>(`/chat/with/${userId}`) : null;
-    request?.then(applyThread).catch((err: any) => setError(err.message));
+    request?.then(data => { setError(''); applyThread(data); }).catch((err: any) => {
+      if (background) return;
+      setError(err.message === 'Internal Server Error' ? 'Chat could not load. Open it again.' : err.message);
+    });
   };
 
   useEffect(() => {
@@ -144,7 +153,7 @@ export default function Chat() {
 
   useEffect(() => {
     if (!userId && !conversationId) return;
-    const timer = setInterval(loadThread, 4000);
+    const timer = setInterval(() => loadThread(true), 4000);
     return () => clearInterval(timer);
   }, [userId, conversationId]);
 
