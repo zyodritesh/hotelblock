@@ -80,6 +80,12 @@ function resolveProperty(propertyId: unknown): { id: string } | { error: string 
   return { id: row.id };
 }
 
+function optionalId(value: unknown, fallback: string | null) {
+  if (value === undefined) return fallback;
+  const id = String(value || '').trim();
+  return id || null;
+}
+
 function readDay(value: unknown, label: string): { day: string | null } | { error: string } {
   if (value === undefined || value === null || value === '') return { day: null };
   const day = String(value).slice(0, 10);
@@ -207,12 +213,26 @@ router.put('/:id', (req: AuthRequest, res: Response) => {
     propertyId = hotel.id;
   }
   const now = new Date().toISOString();
-  db.prepare(`UPDATE leads SET account_id=?,contact_id=?,property_id=?,title=?,segment=?,stage=?,estimated_revenue=?,event_date=?,event_end_date=?,room_nights=?,pax=?,notes=?,updated_at=? WHERE id=?`).run(
-    account_id ?? lead.account_id, contact_id ?? lead.contact_id, propertyId, title ?? lead.title, segment ?? lead.segment,
-    stage ?? lead.stage, estimated_revenue ?? lead.estimated_revenue, stay.start, stay.end,
-    room_nights ?? lead.room_nights, pax ?? lead.pax, notes ?? lead.notes, now, req.params.id,
+  const nextAccount = optionalId(account_id, lead.account_id);
+  const nextContact = optionalId(contact_id, lead.contact_id);
+  const beforeOwners = new Set(
+    (db.prepare('SELECT user_id FROM lead_owners WHERE lead_id=?').all(lead.id) as { user_id: string }[]).map(r => r.user_id),
   );
-  const added = resolvedOwners ? saveOwners(lead.id, resolvedOwners.ids, resolvedOwners.primary, req.user!.id) : [];
+  try {
+    const tx = db.transaction(() => {
+      db.prepare(`UPDATE leads SET account_id=?,contact_id=?,property_id=?,title=?,segment=?,stage=?,estimated_revenue=?,event_date=?,event_end_date=?,room_nights=?,pax=?,notes=?,updated_at=? WHERE id=?`).run(
+        nextAccount, nextContact, propertyId, title ?? lead.title, segment ?? lead.segment,
+        stage ?? lead.stage, estimated_revenue ?? lead.estimated_revenue, stay.start, stay.end,
+        room_nights ?? lead.room_nights, pax ?? lead.pax, notes ?? lead.notes, now, req.params.id,
+      );
+      if (resolvedOwners) saveOwners(lead.id, resolvedOwners.ids, resolvedOwners.primary, req.user!.id);
+    });
+    tx();
+  } catch (err) {
+    console.error(err);
+    return res.status(400).json({ error: 'This lead could not be saved. Check the hotel, account, and owners, then try again.' });
+  }
+  const added = resolvedOwners ? resolvedOwners.ids.filter(id => !beforeOwners.has(id)) : [];
   const nextStage = stage ?? lead.stage;
   if (lead.agent_id && lead.stage !== 'Closed Won' && nextStage === 'Closed Won') {
     const revenue = Number(estimated_revenue ?? lead.estimated_revenue) || 0;
