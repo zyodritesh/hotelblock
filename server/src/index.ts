@@ -78,6 +78,10 @@ app.use('/api/agent-portal', agentPortalRoutes);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
+app.use('/api', (_req, res) => {
+  res.status(404).json({ error: 'That did not work. Open the page again.' });
+});
+
 const androidDir = path.join(__dirname, '../../android');
 app.get('/.well-known/assetlinks.json', (_req, res) => {
   res.type('application/json');
@@ -107,7 +111,7 @@ app.get('/get-app', (_req, res) => {
 <body style="margin:0;font-family:sans-serif;background:#0f172a;color:#fff">
   <main style="max-width:420px;margin:0 auto;padding:28px 20px">
     <h1 style="font-size:28px;margin:0 0 8px">HotelBlock</h1>
-    <p style="color:#cbd5e1;line-height:1.5">Version 1.0.9. Purani HotelBlock ke upar install kar sakte ho. ZIP download karo, andar HotelBlock-1.0.9.apk install karo. Microphone aur notifications par Allow dabao. Team call par Speaker on aur Speaker off hai, incoming call phone ki ringtone bajati hai, aur slow network par call reconnect karti hai. Chat ka send box keyboard ke upar rehta hai.</p>
+    <p style="color:#cbd5e1;line-height:1.5">Version 1.0.9. Purani HotelBlock ke upar install kar sakte ho. ZIP download karo, andar HotelBlock-1.0.9.apk install karo. Microphone aur notifications par Allow dabao. Team call par Speaker on aur Speaker off hai, incoming call phone ki ringtone bajati hai, aur slow network par call reconnect karti hai. Chat ka send box keyboard ke upar rehta hai. Purani app purane link par khulti hai, isliye abhi yeh naya link browser mein kholo.</p>
     <a href="/HotelBlock.zip" style="display:block;margin:18px 0;background:#2563eb;color:#fff;text-align:center;text-decoration:none;font-weight:700;padding:16px;border-radius:14px">Download ZIP 1.0.9</a>
     <a href="/hotelblock.apk" style="display:block;margin:0 0 18px;background:#1e293b;color:#fff;text-align:center;text-decoration:none;font-weight:700;padding:16px;border-radius:14px">Download APK 1.0.9</a>
     <p style="color:#94a3b8;font-size:14px;line-height:1.5">Customer call phone app kholti hai. Team call app ke andar connect hoti hai, timer tab chalta hai, aur call log mein save hoti hai.</p>
@@ -131,7 +135,8 @@ app.get('*', (_req, res) => {
 app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);
   if (res.headersSent) return;
-  if (req.path.startsWith('/api')) return res.status(500).json({ error: 'Something went wrong. Open the page again.' });
+  const url = req.originalUrl || req.url || '';
+  if (url.startsWith('/api')) return res.status(500).json({ error: 'Something went wrong. Open the page again.' });
   return res.status(500).type('text').send('Something went wrong. Open the page again.');
 });
 

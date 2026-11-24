@@ -3,23 +3,9 @@ import { getSnapshot, patch } from './store';
 
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] },
-  {
-    urls: [
-      'turn:openrelay.metered.ca:80',
-      'turn:openrelay.metered.ca:443',
-      'turns:openrelay.metered.ca:443',
-    ],
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
-  },
 ];
 
-const PEER: RTCConfiguration = {
-  iceServers: ICE_SERVERS,
-  iceCandidatePoolSize: 4,
-  bundlePolicy: 'max-bundle',
-  rtcpMuxPolicy: 'require',
-};
+const PEER: RTCConfiguration = { iceServers: ICE_SERVERS };
 
 const MIC: MediaTrackConstraints = {
   echoCancellation: true,
@@ -46,6 +32,7 @@ let initialAnswer = false;
 let pulling = false;
 let iceBatch: RTCIceCandidateInit[] = [];
 let iceTimer = 0;
+let sawMedia = false;
 const appliedIce = new Set<string>();
 const seenSignalIds = new Set<string>();
 const seenGroupKeys = new Set<string>();
@@ -85,6 +72,7 @@ function resetMedia() {
   if (iceTimer) window.clearTimeout(iceTimer);
   iceTimer = 0;
   iceBatch = [];
+  sawMedia = false;
   initialAnswer = false;
   pulling = false;
   local?.getTracks().forEach(track => {
@@ -153,34 +141,57 @@ function clearLinkRestart(connection: RTCPeerConnection) {
   linkRestarts.delete(connection);
 }
 
+function becameLive(connection: RTCPeerConnection) {
+  sawMedia = true;
+  if (dropTimer) window.clearTimeout(dropTimer);
+  dropTimer = 0;
+  clearLinkRestart(connection);
+  restartedLinks.delete(connection);
+  if (getSnapshot().link !== 'ok') patch({ link: 'ok' });
+  markLive();
+  void tune(connection);
+}
+
+function scheduleRestart(connection: RTCPeerConnection, remoteUserId: string, wait: number) {
+  if (linkRestarts.has(connection) || restartedLinks.has(connection)) return;
+  linkRestarts.set(connection, window.setTimeout(() => {
+    linkRestarts.delete(connection);
+    const stillIce = connection.iceConnectionState;
+    const stillState = connection.connectionState;
+    if (hangingUp || stillIce === 'connected' || stillIce === 'completed' || stillState === 'connected') return;
+    restartedLinks.add(connection);
+    if (remoteUserId) void restartGroupLink(remoteUserId, connection);
+    else void restartLink(connection);
+  }, wait));
+}
+
 function noteConnection(connection: RTCPeerConnection, endOnFail: boolean, remoteUserId = '') {
   if (hangingUp) return;
   const ice = connection.iceConnectionState;
   const state = connection.connectionState;
   const up = ice === 'connected' || ice === 'completed' || state === 'connected';
   if (up) {
-    if (dropTimer) window.clearTimeout(dropTimer);
-    dropTimer = 0;
-    clearLinkRestart(connection);
-    restartedLinks.delete(connection);
-    if (getSnapshot().link !== 'ok') patch({ link: 'ok' });
-    markLive();
+    becameLive(connection);
     return;
   }
   const down = ice === 'disconnected' || ice === 'failed' || state === 'disconnected' || state === 'failed';
-  if (!down || getSnapshot().phase === 'idle' || getSnapshot().phase === 'incoming') return;
-  patch({ link: 'weak' });
-  if (!linkRestarts.has(connection) && !restartedLinks.has(connection)) {
-    linkRestarts.set(connection, window.setTimeout(() => {
-      linkRestarts.delete(connection);
-      const stillIce = connection.iceConnectionState;
-      const stillState = connection.connectionState;
-      if (hangingUp || stillIce === 'connected' || stillIce === 'completed' || stillState === 'connected') return;
-      restartedLinks.add(connection);
-      if (remoteUserId) void restartGroupLink(remoteUserId, connection);
-      else void restartLink(connection);
-    }, ice === 'failed' || state === 'failed' ? 400 : 4000));
+  const phase = getSnapshot().phase;
+  if (phase === 'idle' || phase === 'incoming') return;
+  if (!sawMedia) {
+    if (phase !== 'connecting') return;
+    if (endOnFail && !dropTimer) {
+      dropTimer = window.setTimeout(() => {
+        dropTimer = 0;
+        if (hangingUp || sawMedia || getSnapshot().phase === 'idle') return;
+        idle('The call could not connect. Try again.');
+      }, 25000);
+    }
+    if (ice === 'failed' || state === 'failed') scheduleRestart(connection, remoteUserId, 8000);
+    return;
   }
+  if (!down) return;
+  patch({ link: 'weak' });
+  scheduleRestart(connection, remoteUserId, ice === 'failed' || state === 'failed' ? 1500 : 4000);
   if (!endOnFail || dropTimer) return;
   dropTimer = window.setTimeout(() => {
     dropTimer = 0;
@@ -198,8 +209,8 @@ async function restartLink(connection: RTCPeerConnection) {
   try {
     const offer = await connection.createOffer({ iceRestart: true });
     await connection.setLocalDescription(offer);
-    await api.post(`/team-calls/${callId}/signal`, { kind: 'offer', sdp: offer.sdp });
-    await tune(connection);
+    await waitForCandidates(connection, 1200);
+    await api.post(`/team-calls/${callId}/signal`, { kind: 'offer', sdp: connection.localDescription?.sdp || offer.sdp });
   } catch {
     restartedLinks.delete(connection);
   }
@@ -210,8 +221,8 @@ async function restartGroupLink(remoteUserId: string, connection: RTCPeerConnect
   try {
     const offer = await connection.createOffer({ iceRestart: true });
     await connection.setLocalDescription(offer);
-    await api.post(`/team-calls/${callId}/signal`, { kind: 'offer', to_user_id: remoteUserId, sdp: offer.sdp });
-    await tune(connection);
+    await waitForCandidates(connection, 1200);
+    await api.post(`/team-calls/${callId}/signal`, { kind: 'offer', to_user_id: remoteUserId, sdp: connection.localDescription?.sdp || offer.sdp });
   } catch {
     restartedLinks.delete(connection);
   }
@@ -229,14 +240,35 @@ async function tune(connection: RTCPeerConnection) {
   if (!sender) return;
   try {
     const params = sender.getParameters();
-    if (!params.encodings?.length) params.encodings = [{}];
-    params.encodings[0].maxBitrate = 24000;
+    const encoding = params.encodings?.[0];
+    if (!encoding) return;
+    encoding.maxBitrate = 24000;
     await sender.setParameters(params);
   } catch { /* a phone that ignores the cap still connects */ }
 }
 
-function openMic() {
-  return navigator.mediaDevices.getUserMedia({ audio: MIC, video: false });
+function waitForCandidates(connection: RTCPeerConnection, limit = 2000) {
+  if (connection.iceGatheringState === 'complete') return Promise.resolve();
+  return new Promise<void>(resolve => {
+    const finish = () => {
+      connection.removeEventListener('icegatheringstatechange', onState);
+      window.clearTimeout(timer);
+      resolve();
+    };
+    const onState = () => {
+      if (connection.iceGatheringState === 'complete') finish();
+    };
+    connection.addEventListener('icegatheringstatechange', onState);
+    const timer = window.setTimeout(finish, limit);
+  });
+}
+
+async function openMic() {
+  try {
+    return await navigator.mediaDevices.getUserMedia({ audio: MIC, video: false });
+  } catch {
+    return navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  }
 }
 
 function playRemote(stream: MediaStream | null) {
@@ -291,6 +323,7 @@ function openPeer() {
   };
   pc.ontrack = event => {
     playRemote(event.streams[0] || new MediaStream([event.track]));
+    if (pc) becameLive(pc);
   };
   pc.oniceconnectionstatechange = () => { if (pc) noteConnection(pc, true); };
   pc.onconnectionstatechange = () => { if (pc) noteConnection(pc, true); };
@@ -302,7 +335,6 @@ async function takeAnswer(sdp: string) {
   answerApplied = true;
   remoteReady = true;
   await flushIce();
-  await tune(pc);
   if (getSnapshot().phase === 'outgoing') patch({ phase: 'connecting' });
 }
 
@@ -316,10 +348,10 @@ async function takeRemoteOffer(sdp: string) {
   remoteReady = true;
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
+  await waitForCandidates(pc);
   answerApplied = true;
-  await api.post(`/team-calls/${callId}/signal`, { kind: 'answer', sdp: answer.sdp });
+  await api.post(`/team-calls/${callId}/signal`, { kind: 'answer', sdp: pc.localDescription?.sdp || answer.sdp });
   await flushIce();
-  await tune(pc);
 }
 
 async function pullSignals() {
@@ -388,6 +420,7 @@ export async function startOutgoing(peer: { id: string; name: string }) {
   if (getSnapshot().phase !== 'idle') return;
   group = false;
   hangingUp = false;
+  sawMedia = false;
   patch({ phase: 'outgoing', peerName: peer.name, peerId: peer.id, error: '', callId: '', connectedAt: 0, muted: false });
   nativeCallScreen(true);
   try {
@@ -395,10 +428,10 @@ export async function startOutgoing(peer: { id: string; name: string }) {
     applyMute();
     openPeer();
     local.getTracks().forEach(track => pc!.addTrack(track, local!));
-    await tune(pc!);
     const offer = await pc!.createOffer();
     await pc!.setLocalDescription(offer);
-    const call = await api.post<{ id: string }>('/team-calls', { to_user_id: peer.id, offer: offer.sdp });
+    await waitForCandidates(pc!);
+    const call = await api.post<{ id: string }>('/team-calls', { to_user_id: peer.id, offer: pc!.localDescription?.sdp || offer.sdp });
     callId = call.id;
     patch({ callId: call.id });
     for (const candidate of localIce) sendIce(candidate);
@@ -413,6 +446,7 @@ export function showIncoming(call: { id: string; from_user_id: string; from_name
   const snap = getSnapshot();
   if (snap.phase !== 'idle') return;
   hangingUp = false;
+  sawMedia = false;
   nativeCallScreen(true);
   if (call?.is_group) {
     group = true;
@@ -439,7 +473,6 @@ function linkFor(remoteUserId: string) {
   if (existing) return existing;
   const connection = new RTCPeerConnection(PEER);
   local?.getTracks().forEach(track => connection.addTrack(track, local!));
-  void tune(connection);
   const audio = document.createElement('audio');
   audio.autoplay = true;
   audio.setAttribute('playsinline', 'true');
@@ -452,6 +485,7 @@ function linkFor(remoteUserId: string) {
     const stream = event.streams[0] || new MediaStream([event.track]);
     audio.srcObject = stream;
     audio.play().catch(() => {});
+    becameLive(connection);
   };
   connection.oniceconnectionstatechange = () => noteConnection(connection, false, remoteUserId);
   connection.onconnectionstatechange = () => noteConnection(connection, false, remoteUserId);
@@ -472,7 +506,8 @@ async function offerTo(remoteUserId: string) {
   const link = linkFor(remoteUserId);
   const offer = await link.pc.createOffer();
   await link.pc.setLocalDescription(offer);
-  await api.post(`/team-calls/${callId}/signal`, { kind: 'offer', to_user_id: remoteUserId, sdp: offer.sdp });
+  await waitForCandidates(link.pc);
+  await api.post(`/team-calls/${callId}/signal`, { kind: 'offer', to_user_id: remoteUserId, sdp: link.pc.localDescription?.sdp || offer.sdp });
 }
 
 async function onGroupSignal(from: string, signal: { kind: string; sdp?: string; candidate?: RTCIceCandidateInit }) {
@@ -488,7 +523,8 @@ async function onGroupSignal(from: string, signal: { kind: string; sdp?: string;
     link.remoteReady = true;
     const answer = await link.pc.createAnswer();
     await link.pc.setLocalDescription(answer);
-    await api.post(`/team-calls/${callId}/signal`, { kind: 'answer', to_user_id: from, sdp: answer.sdp });
+    await waitForCandidates(link.pc);
+    await api.post(`/team-calls/${callId}/signal`, { kind: 'answer', to_user_id: from, sdp: link.pc.localDescription?.sdp || answer.sdp });
     await flushLink(link);
     if (getSnapshot().phase === 'outgoing') patch({ phase: 'connecting' });
     return;
@@ -513,6 +549,7 @@ export async function startGroupCall(conversationId: string, title: string) {
   if (getSnapshot().phase !== 'idle') return;
   group = true;
   hangingUp = false;
+  sawMedia = false;
   patch({ phase: 'outgoing', peerName: title || 'Group call', peerId: '', error: '', callId: '', connectedAt: 0, muted: false });
   nativeCallScreen(true);
   try {
@@ -556,12 +593,12 @@ export async function acceptIncoming() {
     callId = snap.callId;
     openPeer();
     local.getTracks().forEach(track => pc!.addTrack(track, local!));
-    await tune(pc!);
     await pc!.setRemoteDescription({ type: 'offer', sdp: incomingOffer });
     remoteReady = true;
     const answer = await pc!.createAnswer();
     await pc!.setLocalDescription(answer);
-    await api.post(`/team-calls/${callId}/answer`, { answer: answer.sdp });
+    await waitForCandidates(pc!);
+    await api.post(`/team-calls/${callId}/answer`, { answer: pc!.localDescription?.sdp || answer.sdp });
     for (const candidate of localIce) sendIce(candidate);
     localIce = [];
     await flushIce();

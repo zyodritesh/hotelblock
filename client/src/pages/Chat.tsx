@@ -306,15 +306,15 @@ export default function Chat() {
           {threads.map(thread => (
             <button key={thread.id} type="button" className="w-full px-4 py-3 flex items-center gap-3 text-left border-b border-gray-100 hover:bg-gray-50" onClick={() => navigate(thread.path)}>
               <div className="relative w-12 h-12 rounded-full bg-blue-600 text-white flex items-center justify-center font-semibold shrink-0">
-                {thread.is_group ? thread.members.length : (thread.title[0] || '?')}
-                {(thread.online || thread.members.some(member => member.id !== me?.id && onlineIds.includes(member.id))) && <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />}
+                {thread.is_group ? (thread.members?.length || 0) : (thread.title[0] || '?')}
+                {(thread.online || thread.members?.some(member => member.id !== me?.id && onlineIds.includes(member.id))) && <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-baseline justify-between gap-2">
                   <p className="font-semibold text-gray-900 truncate">{thread.title}</p>
                   <span className="text-[11px] text-gray-400 shrink-0">{when(thread.last?.created_at)}</span>
                 </div>
-                <p className="text-sm text-gray-500 truncate mt-0.5">{thread.last?.body || (thread.is_group ? `${thread.members.length} people` : 'No messages yet')}</p>
+                <p className="text-sm text-gray-500 truncate mt-0.5">{thread.last?.body || (thread.is_group ? `${thread.members?.length || 0} people` : 'No messages yet')}</p>
               </div>
               {thread.unread > 0 && <span className="bg-blue-600 text-white text-xs font-bold rounded-full min-w-[22px] h-[22px] px-1 flex items-center justify-center shrink-0">{thread.unread}</span>}
             </button>

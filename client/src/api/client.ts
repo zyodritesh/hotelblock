@@ -23,8 +23,13 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
     throw new Error('Unauthorized');
   }
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error || 'Request failed');
+    const text = await res.text();
+    let message = '';
+    try { message = JSON.parse(text).error || ''; } catch { message = ''; }
+    if (!message || message === 'Internal Server Error') {
+      message = res.status >= 500 ? 'Something went wrong. Open the page again.' : 'That did not work. Try again.';
+    }
+    throw new Error(message);
   }
   return res.json();
 }

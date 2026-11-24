@@ -114,6 +114,14 @@ function messagesFor(conversationId: string) {
   return rows.map(presentMessage);
 }
 
+function safeMessages(conversationId: string) {
+  try { return messagesFor(conversationId); } catch (err) { console.error(err); return []; }
+}
+
+function teamPeople(me: string) {
+  return db.prepare("SELECT id, name, role FROM users WHERE active=1 AND role != 'agent' AND id!=? ORDER BY name").all(me);
+}
+
 function markRead(conversationId: string, userId: string) {
   db.prepare('UPDATE conversation_members SET last_read_at=? WHERE conversation_id=? AND user_id=?').run(new Date().toISOString(), conversationId, userId);
 }
@@ -137,13 +145,14 @@ router.get('/unread', (req: AuthRequest, res: Response) => {
 });
 
 router.get('/threads', (req: AuthRequest, res: Response) => {
+  try {
   const me = req.user!.id;
   const rows = db.prepare(`SELECT c.* FROM conversations c JOIN conversation_members m ON m.conversation_id=c.id AND m.user_id=?`).all(me) as any[];
   const threads = rows.flatMap(row => {
     try { return [{ ...presentConversation(row, me), path: `/chat/c/${row.id}` }]; }
     catch (err) { console.error(err); return []; }
   });
-  const directUserIds = new Set(threads.filter(t => !t.is_group).flatMap(t => t.members.map(m => m.id)));
+  const directUserIds = new Set(threads.filter(t => !t.is_group).flatMap(t => (t.members || []).map((m: { id: string }) => m.id)));
   const people = db.prepare("SELECT id, name, role FROM users WHERE active=1 AND role != 'agent' AND id!=? ORDER BY name").all(me) as { id: string; name: string; role: string }[];
   for (const personRow of people) {
     if (directUserIds.has(personRow.id)) continue;
@@ -165,23 +174,37 @@ router.get('/threads', (req: AuthRequest, res: Response) => {
     return a.title.localeCompare(b.title);
   });
   return res.json({ threads, people, unread: unreadFor(me) });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Chat could not load. Open it again.' });
+  }
 });
 
 router.get('/with/:userId', (req: AuthRequest, res: Response) => {
-  const me = req.user!.id;
-  const other = person(req.params.userId);
-  if (!other || other.id === me) return res.status(404).json({ error: 'Person not found' });
-  const convo = ensureDirect(me, other.id);
-  markRead(convo.id, me);
-  return res.json({ conversation: presentConversation(convo, me), messages: messagesFor(convo.id), people: db.prepare("SELECT id, name, role FROM users WHERE active=1 AND role != 'agent' AND id!=? ORDER BY name").all(me), unread: unreadFor(me) });
+  try {
+    const me = req.user!.id;
+    const other = person(req.params.userId);
+    if (!other || other.id === me) return res.status(404).json({ error: 'Person not found' });
+    const convo = ensureDirect(me, other.id);
+    markRead(convo.id, me);
+    return res.json({ conversation: presentConversation(convo, me), messages: safeMessages(convo.id), people: teamPeople(me), unread: unreadFor(me) });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Chat could not load. Open it again.' });
+  }
 });
 
 router.get('/conversations/:id', (req: AuthRequest, res: Response) => {
-  const me = req.user!.id;
-  const convo = loadConversation(req.params.id);
-  if (!convo || !isMember(convo.id, me)) return res.status(404).json({ error: 'Chat not found' });
-  markRead(convo.id, me);
-  return res.json({ conversation: presentConversation(convo, me), messages: messagesFor(convo.id), people: db.prepare("SELECT id, name, role FROM users WHERE active=1 AND role != 'agent' AND id!=? ORDER BY name").all(me), unread: unreadFor(me) });
+  try {
+    const me = req.user!.id;
+    const convo = loadConversation(req.params.id);
+    if (!convo || !isMember(convo.id, me)) return res.status(404).json({ error: 'Chat not found' });
+    markRead(convo.id, me);
+    return res.json({ conversation: presentConversation(convo, me), messages: safeMessages(convo.id), people: teamPeople(me), unread: unreadFor(me) });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Chat could not load. Open it again.' });
+  }
 });
 
 router.post('/groups', (req: AuthRequest, res: Response) => {
