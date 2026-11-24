@@ -22,7 +22,7 @@ plugins {
 
 def twaManifest = [
     applicationId: 'com.aayor.hotelblock',
-    hostName: 'sig-pieces-jaguar-widespread.trycloudflare.com', // The domain being opened in the TWA.
+    hostName: 'thumbs-sam-compromise-eddie.trycloudflare.com', // The domain being opened in the TWA.
     launchUrl: '/', // The start path for the TWA. Must be relative to the domain.
     name: 'HotelBlock', // The application name.
     launcherName: 'HotelBlock', // The name shown on the Android Launcher.
@@ -76,12 +76,12 @@ android {
             // The URL the Web Manifest for the Progressive Web App that the TWA points to. This
             // is used by Chrome OS and Meta Quest to open the Web version of the PWA instead of
             // the TWA, as it will probably give a better user experience for non-mobile devices.
-            resValue "string", "webManifestUrl", 'https://sig-pieces-jaguar-widespread.trycloudflare.com/manifest.webmanifest'
+            resValue "string", "webManifestUrl", 'https://thumbs-sam-compromise-eddie.trycloudflare.com/manifest.webmanifest'
         
 
         
             // This is used by Meta Quest.
-            resValue "string", "fullScopeUrl", 'https://sig-pieces-jaguar-widespread.trycloudflare.com/'
+            resValue "string", "fullScopeUrl", 'https://thumbs-sam-compromise-eddie.trycloudflare.com/'
         
 
         
