@@ -26,6 +26,14 @@ function timeLabel(iso: string) {
   return new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
 }
 
+function chatError(err: any) {
+  const message = String(err?.message || '');
+  if (!message || /failed to fetch|networkerror|load failed|internal server error/i.test(message)) {
+    return 'Chat could not reach the server. Open the latest link and try again.';
+  }
+  return message;
+}
+
 function highlight(body: string, names: string[]) {
   if (!body) return body;
   const safe = names.filter(Boolean).sort((a, b) => b.length - a.length);
@@ -73,7 +81,7 @@ export default function Chat() {
       patch({ unreadChat: r.unread });
     }).catch((err: any) => {
       if (listed.current) return;
-      setError(err.message === 'Internal Server Error' ? 'Chat could not load. Open it again.' : err.message);
+      setError(chatError(err));
     });
   };
 
@@ -98,7 +106,7 @@ export default function Chat() {
       : userId ? api.get<any>(`/chat/with/${userId}`) : null;
     request?.then(data => { setError(''); applyThread(data); }).catch((err: any) => {
       if (background) return;
-      setError(err.message === 'Internal Server Error' ? 'Chat could not load. Open it again.' : err.message);
+      setError(chatError(err));
     });
   };
 
@@ -220,7 +228,7 @@ export default function Chat() {
       setConversation(saved.conversation);
       if (!conversationId) navigate(`/chat/c/${saved.conversation.id}`);
       loadThread();
-    } catch (err: any) { setError(err.message); }
+    } catch (err: any) { setError(chatError(err)); }
   };
 
   const send = async (e?: React.FormEvent) => {
@@ -250,14 +258,14 @@ export default function Chat() {
       }
       setMention('');
       loadThreads();
-    } catch (err: any) { setError(err.message); } finally { setSending(false); }
+    } catch (err: any) { setError(chatError(err)); } finally { setSending(false); }
   };
 
   const removeMessage = async (message: ChatMessage) => {
     try {
       const saved = await api.del<ChatMessage>(`/chat/messages/${message.id}`);
       setMessages(prev => prev.map(item => item.id === saved.id ? saved : item));
-    } catch (err: any) { setError(err.message); }
+    } catch (err: any) { setError(chatError(err)); }
   };
 
   const createGroup = async (e: React.FormEvent) => {
@@ -268,7 +276,7 @@ export default function Chat() {
       setGroupTitle('');
       setGroupIds([]);
       navigate(`/chat/c/${saved.conversation.id}`);
-    } catch (err: any) { setError(err.message); }
+    } catch (err: any) { setError(chatError(err)); }
   };
 
   const call = () => {
