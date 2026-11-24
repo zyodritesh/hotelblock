@@ -87,6 +87,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }, [token]);
 
   const inChatThread = /^\/chat\/.+/.test(location.pathname);
+  const onChat = location.pathname.startsWith('/chat');
   const activeProperty = properties.find(p => p.id === activePropertyId);
   const brandColor = activeProperty?.brand_color || '#2563eb';
 
@@ -212,7 +213,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <span className="font-bold text-gray-900 lg:hidden truncate min-w-0 flex-1">{activeProperty?.name || 'HotelBlock'}</span>
           <div className="hidden lg:block text-sm text-gray-500 flex-1 min-w-0 truncate">{activeProperty?.name || 'HotelBlock'}</div>
           <div className="flex items-center gap-2 shrink-0">
-            <button type="button" onClick={() => setShowQuickLog(true)} className="lg:hidden text-xs font-semibold text-white bg-blue-600 rounded-full px-3 py-2">Log</button>
+            {!onChat && (
+              <button type="button" onClick={() => setShowQuickLog(true)} className="lg:hidden text-xs font-semibold text-white bg-blue-600 rounded-full px-3 py-2">Log</button>
+            )}
             <NotificationBell />
             <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white lg:hidden" style={{ backgroundColor: brandColor }}>
               {user?.name?.[0]?.toUpperCase()}
@@ -234,14 +237,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <MobileBottomNav overdueCount={overdueCount} chatUnread={chatUnread} />
       <LiveProvider />
 
-      {/* Desktop FAB — Quick Log */}
-      <button
-        onClick={() => setShowQuickLog(true)}
-        className="hidden lg:flex fixed bottom-6 right-6 z-40 items-center gap-2 bg-blue-600 text-white px-4 py-3 rounded-full shadow-lg hover:bg-blue-700 active:scale-95 transition-all font-semibold text-sm"
-        title="Quick Log Call"
-      >
-        <span className="text-lg leading-none">⚡</span> Quick Log
-      </button>
+      {!onChat && (
+        <button
+          type="button"
+          onClick={() => setShowQuickLog(true)}
+          className="hidden lg:flex fixed bottom-6 right-6 z-30 items-center gap-2 bg-blue-600 text-white px-4 py-3 rounded-full shadow-md hover:bg-blue-700 font-semibold text-sm"
+          title="Log a call"
+        >
+          Log call
+        </button>
+      )}
 
       {showQuickLog && <QuickLogModal onClose={() => setShowQuickLog(false)} onSaved={() => setShowQuickLog(false)} />}
     </div>

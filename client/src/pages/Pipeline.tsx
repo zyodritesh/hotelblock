@@ -255,8 +255,11 @@ export default function Pipeline() {
                 </div>
               </div>
               <div className="flex-shrink-0 flex flex-col gap-1">
-                <button className="text-xs text-blue-600 font-medium px-2 py-1 bg-blue-50 rounded" onClick={() => openEdit(lead)}>Edit</button>
-                <button className="text-xs text-red-500 font-medium px-2 py-1 bg-red-50 rounded" onClick={() => setDeleteId(lead.id)}>Del</button>
+                <button type="button" className="text-xs text-blue-600 font-medium px-2 py-1 bg-blue-50 rounded" onClick={() => openEdit(lead)}>Edit</button>
+                <button type="button" className="text-xs text-red-600 font-medium px-2 py-1 bg-red-50 rounded" onClick={() => setDeleteId(lead.id)}>Delete</button>
+                {lead.stage !== 'Closed Lost' && (
+                  <button type="button" className="text-xs text-gray-700 font-medium px-2 py-1 bg-gray-100 rounded" onClick={() => moveStage(lead.id, 'Closed Lost')}>Lost</button>
+                )}
               </div>
             </div>
           </div>
@@ -303,10 +306,16 @@ export default function Pipeline() {
                       )}
                       <p className="text-sm font-semibold text-green-600 mt-2">{formatCurrency(lead.estimated_revenue)}</p>
                       {lead.event_date && <p className="text-xs text-gray-400 mt-1">📅 {formatStay(lead.event_date, lead.event_end_date)}</p>}
-                      <div className="flex gap-1 mt-2">
-                        <button className="text-xs text-blue-600 hover:underline" onClick={() => openEdit(lead)}>Edit</button>
+                      <div className="flex flex-wrap items-center gap-x-1 gap-y-1 mt-2">
+                        <button type="button" className="text-xs text-blue-600 hover:underline" onClick={() => openEdit(lead)}>Edit</button>
                         <span className="text-gray-300">·</span>
-                        <button className="text-xs text-red-500 hover:underline" onClick={() => setDeleteId(lead.id)}>Del</button>
+                        <button type="button" className="text-xs text-red-600 hover:underline" onClick={() => setDeleteId(lead.id)}>Delete</button>
+                        {lead.stage !== 'Closed Lost' && (
+                          <>
+                            <span className="text-gray-300">·</span>
+                            <button type="button" className="text-xs text-gray-700 hover:underline" onClick={() => moveStage(lead.id, 'Closed Lost')}>Lost</button>
+                          </>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -343,9 +352,12 @@ export default function Pipeline() {
                   <td className="py-3 pr-4 text-gray-500">{formatStay(lead.event_date, lead.event_end_date)}</td>
                   <td className="py-3 pr-4 text-gray-500 text-xs">{ownerNames(lead)}{lead.created_by_name && lead.created_by && !(lead.owners || []).some(o => o.id === lead.created_by) ? ` · added by ${lead.created_by_name}` : ''}</td>
                   <td className="py-3">
-                    <div className="flex gap-1">
-                      <button className="btn-ghost text-xs px-2 py-1" onClick={() => openEdit(lead)}>Edit</button>
-                      <button className="btn-ghost text-xs px-2 py-1 text-red-500 hover:bg-red-50" onClick={() => setDeleteId(lead.id)}>Del</button>
+                    <div className="flex flex-wrap gap-1">
+                      <button type="button" className="btn-ghost text-xs px-2 py-1" onClick={() => openEdit(lead)}>Edit</button>
+                      <button type="button" className="btn-ghost text-xs px-2 py-1 text-red-600 hover:bg-red-50" onClick={() => setDeleteId(lead.id)}>Delete</button>
+                      {lead.stage !== 'Closed Lost' && (
+                        <button type="button" className="btn-ghost text-xs px-2 py-1 text-gray-700 hover:bg-gray-100" onClick={() => moveStage(lead.id, 'Closed Lost')}>Lost</button>
+                      )}
                     </div>
                   </td>
                 </tr>
